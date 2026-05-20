@@ -39,6 +39,8 @@ export class WhatsAppHandler {
         return this.handlePaymentInput(normalizedPhone, normalized, session);
       case 'awaiting_notes':
         return this.handleNotesInput(normalizedPhone, normalized, session);
+      case 'awaiting_cancel':
+        return this.handleAwaitingCancel(normalizedPhone, normalized, session);
       default:
         await whatsappSessionService.resetSession(normalizedPhone);
         return this.handleIdle(normalizedPhone, normalized, session, senderName);
@@ -250,12 +252,29 @@ export class WhatsAppHandler {
       return messageFormatter.askName();
     }
 
-    if (['não', 'nao', 'n', 'cancelar'].includes(message)) {
+    if (['não', 'nao', 'n'].includes(message)) {
+      const context = JSON.parse(session.context || '{}');
+      await whatsappSessionService.updateState(phone, 'awaiting_cancel', context);
+      return 'Deseja adicionar mais itens ou cancelar o pedido?\n\n*Adicionar* - voltar ao pedido\n*Cancelar* - cancelar tudo';
+    }
+
+    return 'Confirma o pedido?\n\n*Sim* - Confirmar\n*Não* - Cancelar';
+  }
+
+  private async handleAwaitingCancel(phone: string, message: string, session: any): Promise<string> {
+    const context = JSON.parse(session.context || '{}');
+
+    if (['adicionar', 'add', 'mais', 'voltar', 'continuar'].includes(message)) {
+      await whatsappSessionService.updateState(phone, 'awaiting_items', context);
+      return 'O que mais deseja adicionar? 🛒';
+    }
+
+    if (['cancelar', 'cancela', 'cancel', 'sair'].includes(message)) {
       await whatsappSessionService.resetSession(phone);
       return messageFormatter.cancelConfirmation();
     }
 
-    return 'Confirma o pedido?\n\n*Sim* - Confirmar\n*Não* - Cancelar';
+    return 'O que deseja fazer?\n\n*Adicionar* - adicionar mais itens\n*Cancelar* - cancelar o pedido';
   }
 
   private async handleNameInput(phone: string, message: string, session: any, whatsappJid?: string): Promise<string> {

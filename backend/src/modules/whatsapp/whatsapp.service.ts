@@ -6,6 +6,7 @@ export type SessionState =
   | 'idle'
   | 'awaiting_items'
   | 'awaiting_confirmation'
+  | 'awaiting_cancel'
   | 'awaiting_name'
   | 'awaiting_address'
   | 'awaiting_payment'

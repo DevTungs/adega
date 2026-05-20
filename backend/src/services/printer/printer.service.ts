@@ -1,4 +1,5 @@
 import { printer as ThermalPrinter, PrinterTypes, CharacterSet } from 'node-thermal-printer';
+import { execSync } from 'child_process';
 import { logger } from '../../shared/middlewares/logger';
 import { getDb } from '../../config/database';
 
@@ -19,6 +20,7 @@ class PrinterService {
       ip: settings.printer_ip || '',
       port: parseInt(settings.printer_port || '9100'),
       width: parseInt(settings.printer_width || '48'),
+      printerName: settings.printer_name || '',
     };
   }
 
@@ -36,16 +38,50 @@ class PrinterService {
     };
   }
 
+  /**
+   * List available printers on Windows using PowerShell/WMI
+   */
+  getAvailablePrinters(): string[] {
+    try {
+      const result = execSync(
+        'powershell -NoProfile -Command "Get-Printer | Select-Object -ExpandProperty Name"',
+        { encoding: 'utf-8', timeout: 10000 }
+      );
+      return result.split('\n').map(s => s.trim()).filter(Boolean);
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Failed to list printers');
+      return [];
+    }
+  }
+
   private async initPrinter(): Promise<boolean> {
     try {
       const config = this.getSettings();
-      const iface = config.type === 'network'
-        ? `tcp://${config.ip}:${config.port}`
-        : (config.interface || 'USB');
+
+      if (config.type === 'network') {
+        // Network printer via TCP
+        const iface = `tcp://${config.ip}:${config.port}`;
+        this.printer = new ThermalPrinter({
+          type: PrinterTypes.EPSON,
+          interface: iface,
+          width: config.width,
+          characterSet: CharacterSet.PC860_PORTUGUESE,
+        });
+        this.connected = await this.printer.isPrinterConnected();
+        return this.connected;
+      }
+
+      // USB/local printer via Windows print subsystem
+      if (!config.printerName) {
+        logger.warn('No printer name configured - set printer_name in settings');
+        this.connected = false;
+        return false;
+      }
 
       this.printer = new ThermalPrinter({
         type: PrinterTypes.EPSON,
-        interface: iface,
+        interface: `printer:${config.printerName}`,
+        driver: this.getWindowsDriver(),
         width: config.width,
         characterSet: CharacterSet.PC860_PORTUGUESE,
       });
@@ -57,6 +93,80 @@ class PrinterService {
       this.connected = false;
       return false;
     }
+  }
+
+  /**
+   * Windows printer driver using PowerShell/.NET
+   */
+  private getWindowsDriver() {
+    return {
+      getPrinters: () => {
+        try {
+          const result = execSync(
+            'powershell -NoProfile -Command "Get-Printer | Select-Object Name, PrinterStatus, Type | ConvertTo-Json"',
+            { encoding: 'utf-8', timeout: 10000 }
+          );
+          const printers = JSON.parse(result);
+          const list = Array.isArray(printers) ? printers : [printers];
+          return list.map((p: any) => ({
+            name: p.Name,
+            isDefault: false,
+            options: {
+              'printer-make-and-model': '',
+              'system_driver': '',
+              'printer-state': p.PrinterStatus === 0 ? '3' : '4', // 3=idle, 4=error
+              'printer-location': '',
+              'printer-info': p.Name,
+              'raw_only': true,
+            },
+          }));
+        } catch (err: any) {
+          logger.error({ error: err.message }, 'Failed to enumerate printers');
+          return [];
+        }
+      },
+      printDirect: (options: any) => {
+        try {
+          const printerName = options.printer || options.printerName;
+          if (!printerName) throw new Error('No printer name specified');
+
+          // Write raw bytes to temp file and send to printer via PowerShell
+          const fs = require('fs');
+          const path = require('path');
+          const tmpFile = path.join(process.env.TEMP || '/tmp', `adega_print_${Date.now()}.prn`);
+          fs.writeFileSync(tmpFile, options.data);
+
+          // Use .NET PrintDocument to send raw bytes
+          const psScript = `
+$printerName = '${printerName.replace(/'/g, "''")}'
+$tmpFile = '${tmpFile.replace(/'/g, "''").replace(/\\/g, '\\\\')}'
+try {
+  $bytes = [System.IO.File]::ReadAllBytes($tmpFile)
+  $printServer = New-Object System.Printing.PrintServer
+  $printQueue = $printServer.GetPrintQueue($printerName)
+  $job = $printQueue.AddJob()
+  $jobStream = $job.JobStream
+  $jobStream.Write($bytes, 0, $bytes.Length)
+  $jobStream.Close()
+  Write-Output "OK"
+} catch {
+  Write-Error $_.Exception.Message
+} finally {
+  Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
+}`;
+
+          const result = execSync(
+            `powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ';')}"`,
+            { encoding: 'utf-8', timeout: 30000 }
+          );
+
+          if (options.success) options.success();
+        } catch (err: any) {
+          logger.error({ error: err.message }, 'Print direct failed');
+          if (options.error) options.error(err.message);
+        }
+      },
+    };
   }
 
   async printOrder(order: any): Promise<boolean> {
@@ -195,12 +305,13 @@ class PrinterService {
     return map[method] || method;
   }
 
-  async checkPrinter(): Promise<boolean> {
+  async checkPrinter(): Promise<{ connected: boolean; printers: string[] }> {
+    const printers = this.getAvailablePrinters();
     try {
       const ok = await this.initPrinter();
-      return ok;
+      return { connected: ok, printers };
     } catch {
-      return false;
+      return { connected: false, printers };
     }
   }
 }

@@ -1,8 +1,24 @@
 import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../auth/auth.middleware';
 import { getDb } from '../../config/database';
+import { printerService } from '../../services/printer/printer.service';
 
 export async function registerSettingsRoutes(app: FastifyInstance) {
+  // List available printers on this machine
+  app.get('/api/settings/printers', {
+    preHandler: [authMiddleware],
+    handler: async (request, reply) => {
+      const result = await printerService.checkPrinter();
+      reply.send({
+        success: true,
+        data: {
+          connected: result.connected,
+          printers: result.printers,
+        },
+      });
+    },
+  });
+
   // Get all settings
   app.get('/api/settings', {
     preHandler: [authMiddleware],

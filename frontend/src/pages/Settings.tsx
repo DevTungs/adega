@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Store, Printer, Bell } from 'lucide-react';
+import { Save, Store, Printer, Bell, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../api/client';
 
@@ -12,6 +12,7 @@ interface Settings {
   min_order: string;
   delivery_radius: string;
   printer_type: string;
+  printer_name: string;
   printer_interface: string;
   printer_ip: string;
   printer_port: string;
@@ -30,6 +31,7 @@ const defaultSettings: Settings = {
   min_order: '20.00',
   delivery_radius: '5',
   printer_type: 'usb',
+  printer_name: '',
   printer_interface: 'USB',
   printer_ip: '',
   printer_port: '9100',
@@ -43,9 +45,12 @@ export default function Settings() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [printers, setPrinters] = useState<string[]>([]);
+  const [loadingPrinters, setLoadingPrinters] = useState(false);
 
   useEffect(() => {
     loadSettings();
+    loadPrinters();
   }, []);
 
   const loadSettings = async () => {
@@ -58,6 +63,20 @@ export default function Settings() {
       toast.error('Erro ao carregar configurações');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPrinters = async () => {
+    setLoadingPrinters(true);
+    try {
+      const { data } = await api.get('/settings/printers');
+      if (data.success) {
+        setPrinters(data.data.printers || []);
+      }
+    } catch {
+      // Silently fail - not critical
+    } finally {
+      setLoadingPrinters(false);
     }
   };
 
@@ -148,14 +167,37 @@ export default function Settings() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
               <select value={settings.printer_type} onChange={(e) => update('printer_type', e.target.value)} className="input w-full">
-                <option value="usb">USB</option>
+                <option value="usb">USB / Local</option>
                 <option value="network">Rede (TCP/IP)</option>
               </select>
             </div>
             {settings.printer_type === 'usb' ? (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Interface USB</label>
-                <input type="text" value={settings.printer_interface} onChange={(e) => update('printer_interface', e.target.value)} className="input w-full" placeholder="USB" />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">Impressora</label>
+                  <button
+                    type="button"
+                    onClick={loadPrinters}
+                    disabled={loadingPrinters}
+                    className="text-xs text-primary-600 hover:text-primary-800 flex items-center gap-1"
+                  >
+                    <RefreshCw size={12} className={loadingPrinters ? 'animate-spin' : ''} />
+                    {loadingPrinters ? 'Buscando...' : 'Atualizar lista'}
+                  </button>
+                </div>
+                <select
+                  value={settings.printer_name}
+                  onChange={(e) => update('printer_name', e.target.value)}
+                  className="input w-full"
+                >
+                  <option value="">Selecione uma impressora...</option>
+                  {printers.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+                {printers.length === 0 && !loadingPrinters && (
+                  <p className="text-xs text-gray-500 mt-1">Nenhuma impressora encontrada. Clique em "Atualizar lista".</p>
+                )}
               </div>
             ) : (
               <>
