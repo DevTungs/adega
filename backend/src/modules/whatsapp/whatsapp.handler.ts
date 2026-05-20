@@ -21,7 +21,7 @@ export class WhatsAppHandler {
     const session = await whatsappSessionService.getOrCreate(normalizedPhone);
     const normalized = message.toLowerCase().trim();
 
-    logger.debug({ phone: normalizedPhone, whatsappJid, state: session.state, message }, 'Processing message');
+    logger.info({ phone: normalizedPhone, whatsappJid, state: session.state, message, originalMessage: message }, '[HANDLER] Processing message');
 
     // Handle based on session state
     switch (session.state) {
@@ -50,9 +50,12 @@ export class WhatsAppHandler {
   private async handleIdle(phone: string, message: string, session: any, senderName?: string): Promise<string> {
     const displayName = senderName || 'cliente';
 
+    logger.info({ phone, message, displayName }, '[HANDLER] handleIdle called');
+
     // Greetings
     const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'hello', 'hi', 'hey', 'eai', 'e ai', 'opa', 'fala'];
     if (greetings.some(g => message.startsWith(g))) {
+      logger.info({ phone, message }, '[HANDLER] Greeting matched - returning menu');
       return `Olá, ${displayName}! 👋\n\n` +
              'Como posso ajudar?\n\n' +
              '*1* - Ver cardápio\n' +
@@ -93,8 +96,20 @@ export class WhatsAppHandler {
     }
 
     // For everything else, use AI to interpret
+    logger.info({ phone, message }, '[HANDLER] No keyword matched - calling AI');
     try {
       const aiResponse = await aiService.interpretMessage(message, session);
+
+      // AI says to ignore (greetings, menu, etc.) — show default menu
+      if ((aiResponse as any).intent === 'ignore') {
+        logger.info({ phone, message }, '[HANDLER] AI returned ignore - showing menu');
+        return `Olá, ${displayName}! 👋\n\n` +
+               'Como posso ajudar?\n\n' +
+               '*1* - Ver cardápio\n' +
+               '*2* - Fazer pedido\n' +
+               '*3* - Acompanhar pedido\n' +
+               '*4* - Falar com atendente';
+      }
 
       switch (aiResponse.intent) {
         case 'novo_pedido':
@@ -151,6 +166,8 @@ export class WhatsAppHandler {
           }
           // AI returned a message (e.g., asking which beer, listing options)
           if (aiResponse.message) {
+            // Save conversation history so AI has context for follow-up
+            await this.saveHistory(phone, session, message, aiResponse.message);
             return aiResponse.message;
           }
           return 'Não consegui identificar os itens. Pode repetir? Ex: *2 Heineken, 1 Salame* 🍻';
@@ -166,10 +183,13 @@ export class WhatsAppHandler {
           return messageFormatter.help();
 
         case 'outro':
+          await this.saveHistory(phone, session, message, aiResponse.message);
           return aiResponse.message;
 
         default:
-          return aiResponse.message || `Desculpe, não entendi. Digite *ajuda* para ver as opções.`;
+          const defaultMsg = aiResponse.message || `Desculpe, não entendi. Digite *ajuda* para ver as opções.`;
+          await this.saveHistory(phone, session, message, defaultMsg);
+          return defaultMsg;
       }
     } catch (err: any) {
       logger.error({ error: err.message }, 'AI interpretation error');
@@ -200,6 +220,12 @@ export class WhatsAppHandler {
 
     // Try to add more items or answer product questions
     const aiResponse = await aiService.interpretMessage(message, session);
+
+    // AI says to ignore — show current order summary
+    if ((aiResponse as any).intent === 'ignore') {
+      return 'O que deseja fazer com o pedido?\n\n*Sim* - Confirmar\n*Não* - Cancelar';
+    }
+
     if (aiResponse.intent === 'novo_pedido' && aiResponse.products.length > 0) {
       const validProducts = aiResponse.products.filter((p: any) => p.valid && p.product_id);
       if (validProducts.length > 0) {
@@ -354,6 +380,20 @@ export class WhatsAppHandler {
 
     await whatsappSessionService.updateState(phone, 'awaiting_notes', context);
     return messageFormatter.askNotes();
+  }
+
+  private async saveHistory(phone: string, session: any, userMsg: string, assistantMsg: string): Promise<void> {
+    try {
+      const context = JSON.parse(session.context || '{}');
+      const history = context.history || [];
+      history.push({ role: 'user', content: userMsg });
+      history.push({ role: 'assistant', content: assistantMsg });
+      // Keep only last 10 messages
+      const trimmed = history.slice(-10);
+      await whatsappSessionService.updateState(phone, 'idle', { ...context, history: trimmed });
+    } catch {
+      // Non-critical, don't break the flow
+    }
   }
 
   private async handleNotesInput(phone: string, message: string, session: any): Promise<string> {

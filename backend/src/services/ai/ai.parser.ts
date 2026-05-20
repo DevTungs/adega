@@ -80,6 +80,8 @@ export function parseAIResponse(raw: string): AIResponse | null {
   // Try direct JSON parse
   try {
     const parsed = JSON.parse(raw);
+    // AI explicitly says to ignore this message (greetings, menu, etc.)
+    if (parsed.ignore === true) return { intent: 'ignore', message: '', products: [] } as any;
     if (parsed.intent && parsed.message) return parsed as AIResponse;
   } catch {
     // Try repair for truncated responses
@@ -87,6 +89,7 @@ export function parseAIResponse(raw: string): AIResponse | null {
     if (repaired) {
       try {
         const parsed = JSON.parse(repaired);
+        if (parsed.ignore === true) return { intent: 'ignore', message: '', products: [] } as any;
         if (parsed.intent && parsed.message) return parsed as AIResponse;
       } catch { /* repair failed, fall through */ }
     }
