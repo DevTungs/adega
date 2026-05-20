@@ -1,11 +1,15 @@
 import { whatsappSessionService, SessionState } from './whatsapp.service';
 import { messageFormatter } from './whatsapp.formatter';
+import { nlpService } from '../../services/nlp/nlp.service';
 import { aiService } from '../../services/ai/ai.service';
 import { productsService } from '../products/products.service';
 import { customersService } from '../customers/customers.service';
 import { ordersService } from '../orders/orders.service';
 import { logger } from '../../shared/middlewares/logger';
 import { normalizePhone } from '../../shared/utils/phone';
+
+const BOT_MODE = process.env.BOT_MODE || 'ai'; // 'ai' or 'nlp'
+logger.info({ mode: BOT_MODE }, '[HANDLER] Bot mode configured');
 
 const PAYMENT_MAP: Record<string, string> = {
   '1': 'cash', 'dinheiro': 'cash', 'cash': 'cash',
@@ -21,7 +25,7 @@ export class WhatsAppHandler {
     const session = await whatsappSessionService.getOrCreate(normalizedPhone);
     const normalized = message.toLowerCase().trim();
 
-    logger.info({ phone: normalizedPhone, whatsappJid, state: session.state, message, originalMessage: message }, '[HANDLER] Processing message');
+    logger.info({ phone: normalizedPhone, state: session.state, message }, '[HANDLER] Processing message');
 
     // Handle based on session state
     switch (session.state) {
@@ -50,12 +54,9 @@ export class WhatsAppHandler {
   private async handleIdle(phone: string, message: string, session: any, senderName?: string): Promise<string> {
     const displayName = senderName || 'cliente';
 
-    logger.info({ phone, message, displayName }, '[HANDLER] handleIdle called');
-
     // Greetings
     const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'hello', 'hi', 'hey', 'eai', 'e ai', 'opa', 'fala'];
     if (greetings.some(g => message.startsWith(g))) {
-      logger.info({ phone, message }, '[HANDLER] Greeting matched - returning menu');
       return `Olá, ${displayName}! 👋\n\n` +
              'Como posso ajudar?\n\n' +
              '*1* - Ver cardápio\n' +
@@ -71,7 +72,7 @@ export class WhatsAppHandler {
 
     if (message === '2' || ['pedido', 'fazer pedido', 'pedir', 'quero pedir'].includes(message)) {
       const catalog = await productsService.getCatalog();
-      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Ex: *2 Heineken, 1 Salame*';
+      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Ex: *2 Heineken, 1 Batata*';
     }
 
     if (message === '3' || ['meu pedido', 'status', 'acompanhar'].includes(message)) {
@@ -95,82 +96,38 @@ export class WhatsAppHandler {
       return 'Como posso ajudar? Digite:\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente';
     }
 
-    // For everything else, use AI to interpret
-    logger.info({ phone, message }, '[HANDLER] No keyword matched - calling AI');
+    // Interpret message using configured mode (AI or NLP)
     try {
-      const aiResponse = await aiService.interpretMessage(message, session);
+      const response = BOT_MODE === 'nlp'
+        ? await nlpService.parseMessage(message, session)
+        : await aiService.interpretMessage(message, session);
 
-      // AI says to ignore (greetings, menu, etc.) — show default menu
-      if ((aiResponse as any).intent === 'ignore') {
-        logger.info({ phone, message }, '[HANDLER] AI returned ignore - showing menu');
-        return `Olá, ${displayName}! 👋\n\n` +
-               'Como posso ajudar?\n\n' +
-               '*1* - Ver cardápio\n' +
-               '*2* - Fazer pedido\n' +
-               '*3* - Acompanhar pedido\n' +
-               '*4* - Falar com atendente';
-      }
-
-      switch (aiResponse.intent) {
+      switch (response.intent) {
         case 'novo_pedido':
-          if (aiResponse.products.length > 0) {
-            const validProducts = aiResponse.products.filter((p: any) => p.valid);
-            const invalidProducts = aiResponse.products.filter((p: any) => !p.valid);
-
-            // If there are invalid products (like generic "Cerveja"), use AI message to ask for clarification
-            if (invalidProducts.length > 0 && aiResponse.message) {
-              // Still save valid items to context if any
-              if (validProducts.length > 0) {
-                await whatsappSessionService.updateState(phone, 'awaiting_items', {
-                  items: validProducts.map((p: any) => ({
-                    product_id: p.product_id,
-                    name: p.name,
-                    quantity: p.quantity,
-                    price: p.price,
-                  })),
-                  history: [
-                    ...(JSON.parse(session.context || '{}').history || []).slice(-4),
-                    { role: 'user', content: message },
-                    { role: 'assistant', content: aiResponse.message },
-                  ],
-                });
-              }
-              return aiResponse.message;
-            }
-
-            if (validProducts.length > 0) {
-              const items = validProducts.map((p: any) => ({
+          // Response has products — save to session
+          if (response.products.length > 0) {
+            await whatsappSessionService.updateState(phone, 'awaiting_items', {
+              items: response.products.map((p: any) => ({
+                product_id: p.product_id,
                 name: p.name,
                 quantity: p.quantity,
                 price: p.price,
-                total: p.price * p.quantity,
-              }));
-              const subtotal = items.reduce((sum: number, i: any) => sum + i.total, 0);
-
-              await whatsappSessionService.updateState(phone, 'awaiting_items', {
-                items: validProducts.map((p: any) => ({
-                  product_id: p.product_id,
-                  name: p.name,
-                  quantity: p.quantity,
-                  price: p.price,
-                })),
-                history: [
-                  ...(JSON.parse(session.context || '{}').history || []).slice(-4),
-                  { role: 'user', content: message },
-                  { role: 'assistant', content: 'Pedido reconhecido' },
-                ],
-              });
-
-              return messageFormatter.orderConfirmation(items, subtotal);
-            }
+              })),
+              history: [
+                ...(JSON.parse(session.context || '{}').history || []).slice(-4),
+                { role: 'user', content: message },
+                { role: 'assistant', content: response.message },
+              ],
+            });
+            return response.message;
           }
-          // AI returned a message (e.g., asking which beer, listing options)
-          if (aiResponse.message) {
-            // Save conversation history so AI has context for follow-up
-            await this.saveHistory(phone, session, message, aiResponse.message);
-            return aiResponse.message;
+
+          // No products but has message (disambiguation, category options, etc.)
+          if (response.message) {
+            await this.saveHistory(phone, session, message, response.message);
+            return response.message;
           }
-          return 'Não consegui identificar os itens. Pode repetir? Ex: *2 Heineken, 1 Salame* 🍻';
+          return 'Não consegui identificar os itens. Pode repetir? Ex: *2 Heineken, 1 Batata* 🍻';
 
         case 'cardapio':
           const catalog = await productsService.getCatalog();
@@ -183,16 +140,16 @@ export class WhatsAppHandler {
           return messageFormatter.help();
 
         case 'outro':
-          await this.saveHistory(phone, session, message, aiResponse.message);
-          return aiResponse.message;
+          await this.saveHistory(phone, session, message, response.message);
+          return response.message;
 
         default:
-          const defaultMsg = aiResponse.message || `Desculpe, não entendi. Digite *ajuda* para ver as opções.`;
+          const defaultMsg = response.message || `Desculpe, não entendi. Digite *ajuda* para ver as opções.`;
           await this.saveHistory(phone, session, message, defaultMsg);
           return defaultMsg;
       }
     } catch (err: any) {
-      logger.error({ error: err.message }, 'AI interpretation error');
+      logger.error({ error: err.message, mode: BOT_MODE }, 'Message interpretation error');
       return `Desculpe, não entendi. Digite:\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente`;
     }
   }
@@ -218,60 +175,43 @@ export class WhatsAppHandler {
       return 'Deseja adicionar mais itens ou cancelar o pedido?\n\n*Adicionar* - voltar ao pedido\n*Cancelar* - cancelar tudo';
     }
 
-    // Try to add more items or answer product questions
-    const aiResponse = await aiService.interpretMessage(message, session);
+    // Interpret message using configured mode
+    const aiResponse = BOT_MODE === 'nlp'
+      ? await nlpService.parseMessage(message, session)
+      : await aiService.interpretMessage(message, session);
 
-    if (aiResponse.intent === 'novo_pedido' && aiResponse.products.length > 0) {
-      const validProducts = aiResponse.products.filter((p: any) => p.valid && p.product_id);
-      if (validProducts.length > 0) {
-        const existingItems = context.items || [];
-        const existingMap = new Map<string, any>();
-        for (const item of existingItems) {
-          if (item.product_id) {
-            existingMap.set(item.product_id, { ...item });
-          }
-        }
-
-        for (const p of validProducts) {
-          const pid = p.product_id as string;
-          const existing = existingMap.get(pid);
-          if (existing) {
-            existing.quantity = p.quantity;
-          } else {
-            existingMap.set(pid, {
-              product_id: pid,
-              name: p.name,
-              quantity: p.quantity,
-              price: p.price,
-            });
-          }
-        }
-
-        const allItems = Array.from(existingMap.values());
-
-        const displayItems = allItems.map((i: any) => ({
-          name: i.name,
-          quantity: i.quantity,
-          price: i.price,
-          total: i.price * i.quantity,
-        }));
-        const subtotal = displayItems.reduce((sum: number, i: any) => sum + i.total, 0);
-
-        await whatsappSessionService.updateState(phone, 'awaiting_items', {
-          items: allItems,
-          history: context.history,
-        });
-
-        return messageFormatter.orderConfirmation(displayItems, subtotal);
-      }
-    }
-
-    // AI returned a message (e.g., answering "tem outras?" with more options)
-    if (aiResponse.message) {
+    // NLP/AI returned products — update session
+    if (aiResponse.products.length > 0) {
+      await whatsappSessionService.updateState(phone, 'awaiting_items', {
+        items: aiResponse.products.map((p: any) => ({
+          product_id: p.product_id,
+          name: p.name,
+          quantity: p.quantity,
+          price: p.price,
+        })),
+        history: context.history,
+      });
       return aiResponse.message;
     }
 
-    return 'O que deseja fazer com o pedido?\n\n*Sim* - Confirmar\n*Não* - Cancelar';
+    // NLP/AI returned a message (disambiguation, category options, removal, etc.)
+    if (aiResponse.message) {
+      // If the response indicates confirmation needed (removal result), update session
+      if (aiResponse.needs_confirmation && aiResponse.products.length > 0) {
+        await whatsappSessionService.updateState(phone, 'awaiting_items', {
+          items: aiResponse.products.map((p: any) => ({
+            product_id: p.product_id,
+            name: p.name,
+            quantity: p.quantity,
+            price: p.price,
+          })),
+          history: context.history,
+        });
+      }
+      return aiResponse.message;
+    }
+
+    return 'O que deseja fazer com o pedido?\n\n*Sim* - Confirmar\n*Não* - Cancelar\n*Adicionar* - mais itens\n*Remover [item]* - tirar item';
   }
 
   private async handleConfirmation(phone: string, message: string, session: any): Promise<string> {

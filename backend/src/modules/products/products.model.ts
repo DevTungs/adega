@@ -45,6 +45,22 @@ export class ProductsModel {
     return row as Product | undefined;
   }
 
+  findAllAliases(): Map<string, Product> {
+    const db = getDb();
+    const rows = db.all(
+      `SELECT pa.alias, p.* FROM product_aliases pa
+       JOIN products p ON p.id = pa.product_id
+       WHERE p.is_active = 1`
+    );
+    const map = new Map<string, Product>();
+    for (const row of rows) {
+      const alias = (row as any).alias as string;
+      const { alias: _, ...product } = row as any;
+      map.set(alias.toLowerCase(), product as Product);
+    }
+    return map;
+  }
+
   create(data: Partial<Product>): Product {
     const id = data.id || uuid();
     const now = new Date().toISOString();
