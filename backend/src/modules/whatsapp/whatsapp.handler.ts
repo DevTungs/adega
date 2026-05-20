@@ -221,11 +221,6 @@ export class WhatsAppHandler {
     // Try to add more items or answer product questions
     const aiResponse = await aiService.interpretMessage(message, session);
 
-    // AI says to ignore — show current order summary
-    if ((aiResponse as any).intent === 'ignore') {
-      return 'O que deseja fazer com o pedido?\n\n*Sim* - Confirmar\n*Não* - Cancelar';
-    }
-
     if (aiResponse.intent === 'novo_pedido' && aiResponse.products.length > 0) {
       const validProducts = aiResponse.products.filter((p: any) => p.valid && p.product_id);
       if (validProducts.length > 0) {

@@ -26,14 +26,15 @@ Você NÃO deve responder esses casos.
 
 # BLOQUEIO DE RESPOSTA
 
-Se a mensagem do cliente for:
-- saudação
-- despedida
-- agradecimento
-- menu
-- comando numérico
-- mensagem sem intenção clara de pedido
-- mensagem curta sem contexto
+Se a mensagem do cliente for APENAS uma dessas palavras/frases (sem mais nada):
+- oi, olá, ola, hello, hi, hey, eai, opa, fala
+- bom dia, boa tarde, boa noite
+- tchau, bye, até logo, falou
+- obrigado, obrigada, valeu, brigado
+- cardápio, cardapio, menu
+- ajuda, help
+- 1, 2, 3, 4
+- sim, não, nao
 
 RESPONDA EXATAMENTE:
 
@@ -41,7 +42,12 @@ RESPONDA EXATAMENTE:
   "ignore": true
 }
 
-NÃO escreva mais nada.
+NÃO ignore mensagens que mencionam PRODUTOS ou PEDIDOS, mesmo que curtas.
+Exemplos que NÃO deve ignorar:
+- "quero cerveja" → pedido
+- "a zero" → escolha de produto
+- "tem outras?" → pergunta sobre produtos
+- "quero pedir" → intenção de pedido
 
 # DADOS DO CLIENTE
 
