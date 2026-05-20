@@ -111,10 +111,11 @@ class PrinterService {
           return list.map((p: any) => ({
             name: p.Name,
             isDefault: false,
+            attributes: 'RAW-ONLY',
             options: {
               'printer-make-and-model': '',
               'system_driver': '',
-              'printer-state': p.PrinterStatus === 0 ? '3' : '4', // 3=idle, 4=error
+              'printer-state': p.PrinterStatus === 0 ? '3' : '4',
               'printer-location': '',
               'printer-info': p.Name,
               'raw_only': true,
@@ -124,6 +125,13 @@ class PrinterService {
           logger.error({ error: err.message }, 'Failed to enumerate printers');
           return [];
         }
+      },
+      getPrinter: (name: string) => {
+        return {
+          name,
+          status: 'IDLE',
+          attributes: 'RAW-ONLY',
+        };
       },
       printDirect: (options: any) => {
         try {

@@ -86,6 +86,34 @@ class NLPService {
         };
       }
 
+      // Check if there's a category keyword in the message (e.g., "coca zero, cerveja e batata")
+      const categoryMatch = this.matchCategory(normalized);
+      if (categoryMatch) {
+        const items: ParsedItem[] = extracted.map(e => ({
+          product_id: e.product.id,
+          name: e.product.name,
+          quantity: e.quantity,
+          price: e.product.promo_price || e.product.price,
+          valid: true,
+        }));
+
+        const options = categoryMatch.products.map((name: string) => {
+          const p = this.allProducts.find((ap: any) => this.normalize(ap.name).includes(this.normalize(name)));
+          return p ? `• ${p.name} - R$ ${(p.promo_price || p.price).toFixed(2)}` : `• ${name}`;
+        }).join('\n');
+
+        const itemList = items.map(i => `• ${i.quantity}x ${i.name}`).join('\n');
+
+        return {
+          intent: 'novo_pedido',
+          products: items,
+          message: `📋 Já anotei:\n${itemList}\n\n🍺 Para ${categoryMatch.category}, temos:\n${options}\n\nQual prefere?`,
+          needs_confirmation: false,
+          confidence: 0.9,
+          suggestions: categoryMatch.products,
+        };
+      }
+
       // All products resolved
       const items: ParsedItem[] = extracted.map(e => ({
         product_id: e.product.id,
