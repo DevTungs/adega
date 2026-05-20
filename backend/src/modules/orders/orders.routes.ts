@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ordersService } from './orders.service';
+import { printerService } from '../../services/printer/printer.service';
 import { authMiddleware, getUser } from '../auth/auth.middleware';
 import { validateBody } from '../../shared/middlewares/validation';
 
@@ -83,6 +84,21 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       const { driver_id } = request.body as z.infer<typeof assignDriverSchema>;
       const order = await ordersService.assignDriver(id, driver_id);
       reply.send({ success: true, data: order });
+    },
+  });
+
+  // Print
+  app.post('/api/orders/:id/print', {
+    preHandler: [authMiddleware],
+    handler: async (request, reply) => {
+      const { id } = request.params as { id: string };
+      try {
+        const order = await ordersService.getById(id);
+        const success = await printerService.printOrder(order);
+        reply.send({ success, message: success ? 'Cupom enviado para impressão' : 'Falha na impressão' });
+      } catch (err: any) {
+        reply.status(500).send({ success: false, message: err.message });
+      }
     },
   });
 

@@ -144,25 +144,10 @@ class PrinterService {
           const tmpFile = path.join(process.env.TEMP || '/tmp', `adega_print_${Date.now()}.prn`);
           fs.writeFileSync(tmpFile, options.data);
 
-          // Use .NET PrintDocument to send raw bytes
-          const psScript = `
-Add-Type -AssemblyName System.Printing
-$printerName = '${printerName.replace(/'/g, "''")}'
-$tmpFile = '${tmpFile.replace(/'/g, "''").replace(/\\/g, '\\\\')}'
-try {
-  $bytes = [System.IO.File]::ReadAllBytes($tmpFile)
-  $printServer = New-Object System.Printing.PrintServer
-  $printQueue = $printServer.GetPrintQueue($printerName)
-  $job = $printQueue.AddJob()
-  $jobStream = $job.JobStream
-  $jobStream.Write($bytes, 0, $bytes.Length)
-  $jobStream.Close()
-  Write-Output "OK"
-} catch {
-  Write-Error $_.Exception.Message
-} finally {
-  Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
-}`;
+          // Use Out-Printer to send content to printer
+          const escapedFile = tmpFile.replace(/'/g, "''").replace(/\\/g, "\\\\");
+          const escapedPrinter = printerName.replace(/'/g, "''");
+          const psScript = `$file = '${escapedFile}'; $p = '${escapedPrinter}'; try { Get-Content $file -Raw | Out-Printer -Name $p; Write-Output 'OK' } catch { Start-Process -FilePath $file -Verb Print; Write-Output 'OK' } finally { Start-Sleep 2; Remove-Item $file -Force -EA SilentlyContinue }`;
 
           const result = execSync(
             `powershell -NoProfile -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ';')}"`,

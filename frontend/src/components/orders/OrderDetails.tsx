@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { Order } from '../../types';
 import OrderStatusBadge from './OrderStatusBadge';
 import { formatCurrency, formatDateTime, PAYMENT_LABELS, STATUS_LABELS } from '../../utils/format';
-import { X } from 'lucide-react';
+import { X, Printer } from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from '../../api/client';
 
 interface Props {
   order: Order;
@@ -9,14 +12,42 @@ interface Props {
 }
 
 export default function OrderDetails({ order, onClose }: Props) {
+  const [printing, setPrinting] = useState(false);
+
+  const handlePrint = async () => {
+    setPrinting(true);
+    try {
+      const { data } = await api.post(`/orders/${order.id}/print`);
+      if (data.success) {
+        toast.success('Cupom enviado para impressão!');
+      } else {
+        toast.error(data.message || 'Erro ao imprimir');
+      }
+    } catch {
+      toast.error('Erro ao imprimir');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-auto">
         <div className="flex items-center justify-between p-6 border-b">
           <h3 className="text-lg font-bold">Pedido #{order.order_number}</h3>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrint}
+              disabled={printing}
+              className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900"
+              title="Imprimir cupom"
+            >
+              <Printer size={20} className={printing ? 'animate-pulse' : ''} />
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+              <X size={20} />
+            </button>
+          </div>
         </div>
         <div className="p-6 space-y-4">
           <div className="flex items-center justify-between">

@@ -21,6 +21,22 @@ const PAYMENT_MAP: Record<string, string> = {
 };
 
 export class WhatsAppHandler {
+  private isConfirmation(message: string): boolean {
+    const exact = ['sim', 's', 'ok', 'pode', 'fechou', 'confirmo', 'confirma'];
+    if (exact.includes(message)) return true;
+    // Fuzzy match for "confirmar" (tolerate 1-2 typos)
+    if (message.length >= 5 && message.length <= 12) {
+      const target = 'confirmar';
+      let diffs = 0;
+      const minLen = Math.min(message.length, target.length);
+      for (let i = 0; i < minLen; i++) {
+        if (message[i] !== target[i]) diffs++;
+      }
+      diffs += Math.abs(message.length - target.length);
+      if (diffs <= 2) return true;
+    }
+    return false;
+  }
   async handleMessage(phone: string, message: string, senderName?: string, whatsappJid?: string): Promise<string> {
     const normalizedPhone = normalizePhone(phone);
     const session = await whatsappSessionService.getOrCreate(normalizedPhone);
@@ -71,6 +87,12 @@ export class WhatsAppHandler {
     if (message === '1' || ['cardapio', 'cardápio', 'menu', 'produtos'].includes(message)) {
       const catalog = await productsService.getCatalog();
       return messageFormatter.catalog(catalog);
+    }
+
+    // "sim" in idle state — show catalog (response to stock warning, etc.)
+    if (['sim', 's'].includes(message)) {
+      const catalog = await productsService.getCatalog();
+      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Ex: *2 Heineken, 1 Batata*';
     }
 
     if (message === '2' || ['pedido', 'fazer pedido', 'pedir', 'quero pedir'].includes(message)) {
@@ -167,8 +189,8 @@ export class WhatsAppHandler {
       return 'O que mais deseja adicionar? 🛒';
     }
 
-    // Check if confirming
-    if (['sim', 's', 'confirmar', 'ok', 'pode', 'fechou'].includes(message)) {
+    // Check if confirming (with fuzzy tolerance)
+    if (this.isConfirmation(message)) {
       await whatsappSessionService.updateState(phone, 'awaiting_name', context);
       return messageFormatter.askName();
     }
@@ -219,7 +241,7 @@ export class WhatsAppHandler {
   }
 
   private async handleConfirmation(phone: string, message: string, session: any): Promise<string> {
-    if (['sim', 's', 'confirmar', 'ok', 'pode', 'fechou'].includes(message)) {
+    if (this.isConfirmation(message)) {
       const context = JSON.parse(session.context || '{}');
       await whatsappSessionService.updateState(phone, 'awaiting_name', context);
       return messageFormatter.askName();
@@ -338,25 +360,21 @@ export class WhatsAppHandler {
   private async handleOrderPlaced(phone: string, message: string, session: any): Promise<string> {
     const context = JSON.parse(session.context || '{}');
 
-    if (['imprimir', 'print', 'cupom'].includes(message)) {
-      try {
-        const order = await ordersService.getById(context.lastOrderId);
-        const { printerService } = await import('../../services/printer/printer.service');
-        await printerService.printOrder(order);
-        return '🖨️ Cupom enviado para impressão!';
-      } catch (err: any) {
-        logger.error({ error: err.message }, 'Print error');
-        return 'Erro ao imprimir. Verifique se a impressora está configurada.';
-      }
+    // Greetings → reset to idle and show menu
+    const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'hello', 'hi', 'hey', 'eai', 'opa', 'fala'];
+    if (greetings.some(g => message.startsWith(g))) {
+      await whatsappSessionService.resetSession(phone);
+      const name = context.customerName || 'cliente';
+      return `Olá, ${name}! 👋\n\nComo posso ajudar?\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente`;
     }
 
-    if (['novo pedido', 'novo', 'pedir', 'quero pedir', 'menu', 'cardapio', 'cardápio'].includes(message)) {
+    if (['novo pedido', 'novo', 'pedir', 'quero pedir', 'menu', 'cardapio', 'cardápio', '1', '2'].includes(message)) {
       await whatsappSessionService.resetSession(phone);
       const catalog = await productsService.getCatalog();
       return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Ex: *2 Heineken, 1 Batata*';
     }
 
-    if (['acompanhar', 'status', 'meu pedido'].includes(message)) {
+    if (['acompanhar', 'status', 'meu pedido', '3'].includes(message)) {
       if (context.lastOrderId) {
         const order = await ordersService.getById(context.lastOrderId);
         return messageFormatter.statusUpdate(order.order_number, order.status);
@@ -364,7 +382,14 @@ export class WhatsAppHandler {
       return 'Você não tem pedidos ativos no momento. 🛒';
     }
 
-    return '📝 *Imprimir* - imprimir cupom\n🛒 *Novo pedido* - fazer outro pedido\n📦 *Acompanhar* - ver status do pedido';
+    if (['atendente', 'humano', '4'].includes(message)) {
+      emitAgentRequest(phone, context.customerName || 'Cliente');
+      return 'Estamos conectando você com um atendente. Aguarde um momento! 🙏';
+    }
+
+    // Default: show order options
+    const orderNum = context.lastOrderNumber || '';
+    return `✅ Pedido #${orderNum} confirmado!\n\n*1* - Ver cardápio\n*2* - Novo pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente`;
   }
 
   private async handleNotesInput(phone: string, message: string, session: any): Promise<string> {
@@ -392,7 +417,7 @@ export class WhatsAppHandler {
         lastOrderNumber: order.order_number,
       });
 
-      return messageFormatter.orderPlaced(order) + '\n\n📝 *Imprimir* - imprimir cupom\n🛒 *Novo pedido* - fazer outro pedido';
+      return messageFormatter.orderPlaced(order);
     } catch (error: any) {
       logger.error({ error: error.message }, 'Error creating order');
       await whatsappSessionService.resetSession(phone);
