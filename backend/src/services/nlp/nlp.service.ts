@@ -90,39 +90,109 @@ class NLPService {
       // Check if there's a category keyword in the message (e.g., "coca zero, cerveja e batata")
       const categoryMatch = this.matchCategory(normalized);
       if (categoryMatch) {
-        const items: ParsedItem[] = extracted.map(e => ({
-          product_id: e.product.id,
-          name: e.product.name,
-          quantity: e.quantity,
-          price: e.product.promo_price || e.product.price,
-          valid: true,
-        }));
+        const items: ParsedItem[] = [];
+        const outOfStock: string[] = [];
 
-        const options = categoryMatch.products.map((name: string) => {
-          const p = this.allProducts.find((ap: any) => this.normalize(ap.name).includes(this.normalize(name)));
-          return p ? `• ${p.name} - R$ ${(p.promo_price || p.price).toFixed(2)}` : `• ${name}`;
-        }).join('\n');
+        for (const e of extracted) {
+          const stock = e.product.stock ?? 999;
+          if (stock <= 0) {
+            outOfStock.push(e.product.name);
+          } else {
+            items.push({
+              product_id: e.product.id,
+              name: e.product.name,
+              quantity: e.quantity,
+              price: e.product.promo_price || e.product.price,
+              valid: true,
+            });
+          }
+        }
+
+        const options = categoryMatch.products
+          .map((name: string) => {
+            const p = this.allProducts.find((ap: any) => this.normalize(ap.name).includes(this.normalize(name)));
+            if (!p) return null;
+            const stock = p.stock ?? 999;
+            if (stock <= 0) return null; // hide out-of-stock from options
+            return `• ${p.name} - R$ ${(p.promo_price || p.price).toFixed(2)}`;
+          })
+          .filter(Boolean)
+          .join('\n');
 
         const itemList = items.map(i => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
+        const warning = outOfStock.length > 0 ? `⚠️ *Sem estoque:* ${outOfStock.join(', ')}\n\n` : '';
 
         return {
           intent: 'novo_pedido',
           products: items,
-          message: `📋 Já anotei:\n${itemList}\n\n🍺 Para ${categoryMatch.category}, temos:\n${options}\n\nQual prefere?`,
+          message: `${warning}📋 Já anotei:\n${itemList}\n\n🍺 Para ${categoryMatch.category}, temos:\n${options}\n\nQual prefere?`,
           needs_confirmation: false,
           confidence: 0.9,
           suggestions: categoryMatch.products,
         };
       }
 
-      // All products resolved
-      const items: ParsedItem[] = extracted.map(e => ({
-        product_id: e.product.id,
-        name: e.product.name,
-        quantity: e.quantity,
-        price: e.product.promo_price || e.product.price,
-        valid: true,
-      }));
+      // Check stock and build items
+      const items: ParsedItem[] = [];
+      const outOfStock: string[] = [];
+      const lowStock: string[] = [];
+
+      for (const e of extracted) {
+        const stock = e.product.stock ?? 999;
+        if (stock <= 0) {
+          outOfStock.push(e.product.name);
+        } else if (stock < e.quantity) {
+          lowStock.push(`${e.product.name} (disponível: ${stock})`);
+          items.push({
+            product_id: e.product.id,
+            name: e.product.name,
+            quantity: stock,
+            price: e.product.promo_price || e.product.price,
+            valid: true,
+          });
+        } else {
+          items.push({
+            product_id: e.product.id,
+            name: e.product.name,
+            quantity: e.quantity,
+            price: e.product.promo_price || e.product.price,
+            valid: true,
+          });
+        }
+      }
+
+      // If any items are out of stock, warn the customer
+      if (outOfStock.length > 0 || lowStock.length > 0) {
+        const warnings: string[] = [];
+        if (outOfStock.length > 0) {
+          warnings.push(`❌ *Sem estoque:* ${outOfStock.join(', ')}`);
+        }
+        if (lowStock.length > 0) {
+          warnings.push(`⚠️ *Estoque baixo:* ${lowStock.join(', ')}`);
+        }
+
+        if (items.length === 0) {
+          return {
+            intent: 'novo_pedido',
+            products: [],
+            message: `${warnings.join('\n')}\n\nDeseja ver outras opções?`,
+            needs_confirmation: false,
+            confidence: 0.9,
+            suggestions: [],
+          };
+        }
+
+        // Show warning + available items
+        const itemList = items.map(i => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
+        return {
+          intent: 'novo_pedido',
+          products: items,
+          message: `${warnings.join('\n')}\n\n📋 *Itens disponíveis:*\n${itemList}\n\n✅ Confirmar?\n➕ Adicionar mais`,
+          needs_confirmation: true,
+          confidence: 0.9,
+          suggestions: [],
+        };
+      }
 
       // Merge with existing items if in order flow
       const existingItems = context.items || [];
@@ -498,6 +568,22 @@ class NLPService {
       confidence: 0.8,
       suggestions: items.map((i: any) => i.name),
     };
+  }
+
+  private levenshtein(a: string, b: string): number {
+    const m = a.length;
+    const n = b.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+    return dp[m][n];
   }
 
   private matchCategory(message: string): { category: string; products: string[] } | null {
