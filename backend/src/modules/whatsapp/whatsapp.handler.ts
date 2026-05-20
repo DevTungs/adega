@@ -5,6 +5,7 @@ import { aiService } from '../../services/ai/ai.service';
 import { productsService } from '../products/products.service';
 import { customersService } from '../customers/customers.service';
 import { ordersService } from '../orders/orders.service';
+import { emitAgentRequest } from '../../services/websocket/ws.server';
 import { logger } from '../../shared/middlewares/logger';
 import { normalizePhone } from '../../shared/utils/phone';
 
@@ -45,6 +46,8 @@ export class WhatsAppHandler {
         return this.handleNotesInput(normalizedPhone, normalized, session);
       case 'awaiting_cancel':
         return this.handleAwaitingCancel(normalizedPhone, normalized, session);
+      case 'order_placed':
+        return this.handleOrderPlaced(normalizedPhone, normalized, session);
       default:
         await whatsappSessionService.resetSession(normalizedPhone);
         return this.handleIdle(normalizedPhone, normalized, session, senderName);
@@ -85,6 +88,7 @@ export class WhatsAppHandler {
     }
 
     if (message === '4' || ['atendente', 'humano', 'pessoa', 'falar com alguém'].includes(message)) {
+      emitAgentRequest(phone, displayName);
       return 'Estamos conectando você com um atendente. Aguarde um momento! 🙏';
     }
 
@@ -331,6 +335,38 @@ export class WhatsAppHandler {
     }
   }
 
+  private async handleOrderPlaced(phone: string, message: string, session: any): Promise<string> {
+    const context = JSON.parse(session.context || '{}');
+
+    if (['imprimir', 'print', 'cupom'].includes(message)) {
+      try {
+        const order = await ordersService.getById(context.lastOrderId);
+        const { printerService } = await import('../../services/printer/printer.service');
+        await printerService.printOrder(order);
+        return '🖨️ Cupom enviado para impressão!';
+      } catch (err: any) {
+        logger.error({ error: err.message }, 'Print error');
+        return 'Erro ao imprimir. Verifique se a impressora está configurada.';
+      }
+    }
+
+    if (['novo pedido', 'novo', 'pedir', 'quero pedir', 'menu', 'cardapio', 'cardápio'].includes(message)) {
+      await whatsappSessionService.resetSession(phone);
+      const catalog = await productsService.getCatalog();
+      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Ex: *2 Heineken, 1 Batata*';
+    }
+
+    if (['acompanhar', 'status', 'meu pedido'].includes(message)) {
+      if (context.lastOrderId) {
+        const order = await ordersService.getById(context.lastOrderId);
+        return messageFormatter.statusUpdate(order.order_number, order.status);
+      }
+      return 'Você não tem pedidos ativos no momento. 🛒';
+    }
+
+    return '📝 *Imprimir* - imprimir cupom\n🛒 *Novo pedido* - fazer outro pedido\n📦 *Acompanhar* - ver status do pedido';
+  }
+
   private async handleNotesInput(phone: string, message: string, session: any): Promise<string> {
     const context = JSON.parse(session.context || '{}');
     const notes = ['não', 'nao', 'no', 'nada', 'sem'].includes(message.toLowerCase()) ? '' : message;
@@ -351,12 +387,12 @@ export class WhatsAppHandler {
         notes: notes || undefined,
       });
 
-      await whatsappSessionService.updateState(phone, 'idle', {
+      await whatsappSessionService.updateState(phone, 'order_placed', {
         lastOrderId: order.id,
         lastOrderNumber: order.order_number,
       });
 
-      return messageFormatter.orderPlaced(order);
+      return messageFormatter.orderPlaced(order) + '\n\n📝 *Imprimir* - imprimir cupom\n🛒 *Novo pedido* - fazer outro pedido';
     } catch (error: any) {
       logger.error({ error: error.message }, 'Error creating order');
       await whatsappSessionService.resetSession(phone);

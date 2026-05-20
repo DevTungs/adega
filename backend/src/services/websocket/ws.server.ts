@@ -50,6 +50,11 @@ export function emitSystemAlert(alert: any) {
   if (io) io.emit('system:alert', alert);
 }
 
+// Agent request
+export function emitAgentRequest(phone: string, customerName: string) {
+  if (io) io.emit('wa:agent_request', { phone, customerName, time: new Date().toISOString() });
+}
+
 // WhatsApp events
 export function emitWAQR(qrDataUrl: string) {
   if (io) io.emit('wa:qr', { qr: qrDataUrl });
