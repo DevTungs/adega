@@ -1,4 +1,5 @@
 import { productsService } from '../../modules/products/products.service';
+import { getDb } from '../../config/database';
 import { logger } from '../../shared/middlewares/logger';
 import {
   PRODUCT_ALIASES,
@@ -309,7 +310,30 @@ class NLPService {
     for (const item of items) {
       lines.push(`• ${item.quantity}x ${item.name} - R$ ${item.total.toFixed(2)}`);
     }
-    lines.push(`\n💰 *Total: R$ ${subtotal.toFixed(2)}*`);
+
+    // Get delivery fee and min order from settings
+    let deliveryFee = 0;
+    let minOrder = 0;
+    try {
+      const db = getDb();
+      const feeRow = db.get('SELECT value FROM settings WHERE key = ?', ['delivery_fee']);
+      const minRow = db.get('SELECT value FROM settings WHERE key = ?', ['min_order']);
+      if (feeRow) deliveryFee = parseFloat(feeRow.value) || 0;
+      if (minRow) minOrder = parseFloat(minRow.value) || 0;
+    } catch { /* ignore */ }
+
+    lines.push(`\n💰 Subtotal: R$ ${subtotal.toFixed(2)}`);
+    if (deliveryFee > 0) {
+      lines.push(`🛵 Taxa de entrega: R$ ${deliveryFee.toFixed(2)}`);
+      lines.push(`💰 *Total: R$ ${(subtotal + deliveryFee).toFixed(2)}*`);
+    } else {
+      lines.push(`💰 *Total: R$ ${subtotal.toFixed(2)}*`);
+    }
+
+    if (minOrder > 0 && subtotal < minOrder) {
+      lines.push(`\n⚠️ Pedido mínimo: R$ ${minOrder.toFixed(2)} (falta R$ ${(minOrder - subtotal).toFixed(2)})`);
+    }
+
     lines.push('\n✅ Confirmar?\n❌ Remover item\n➕ Adicionar mais');
 
     return lines.join('\n');
