@@ -17,6 +17,10 @@ export default defineConfig({
       '/socket.io': {
         target: 'http://localhost:3333',
         ws: true,
+        // Silently ignore connection refused during backend restarts
+        configure: (proxy) => {
+          proxy.on('error', () => {});
+        },
       },
     },
   },
