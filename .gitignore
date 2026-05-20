@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+data/adega.db
+data/backups/
+data/logs/
+data/uploads/*
+data/sessions/
+*.log
+.DS_Store
+Thumbs.db

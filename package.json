@@ -1,0 +1,14 @@
+{
+  "name": "adega-delivery",
+  "version": "1.0.0",
+  "description": "Sistema de Delivery para Adega",
+  "private": true,
+  "scripts": {
+    "start": "node start.js",
+    "setup": "setup.bat"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc11",
+    "open": "^11.0.0"
+  }
+}

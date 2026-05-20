@@ -1,0 +1,71 @@
+import pino from 'pino';
+import path from 'path';
+import fs from 'fs';
+
+const logsDir = path.resolve(__dirname, '../../../data/logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+const isDev = process.env.NODE_ENV === 'development';
+const logLevel = process.env.LOG_LEVEL || 'info';
+const isBasicLog = logLevel === 'basic';
+
+export const logger = pino({
+  level: isBasicLog ? 'info' : logLevel,
+  transport: isDev
+    ? {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          translateTime: 'HH:MM:ss',
+          ignore: 'pid,hostname',
+        },
+      }
+    : undefined,
+  ...(isDev
+    ? {}
+    : {
+        transport: {
+          targets: [
+            {
+              target: 'pino-pretty',
+              options: {
+                colorize: true,
+                translateTime: 'HH:MM:ss',
+                ignore: 'pid,hostname',
+              },
+              level: 'info',
+            },
+            {
+              target: 'pino/file',
+              options: {
+                destination: path.join(logsDir, `app-${new Date().toISOString().split('T')[0]}.log`),
+                mkdir: true,
+              },
+              level: 'info',
+            },
+            {
+              target: 'pino/file',
+              options: {
+                destination: path.join(logsDir, `error-${new Date().toISOString().split('T')[0]}.log`),
+                mkdir: true,
+              },
+              level: 'error',
+            },
+          ],
+        },
+      }),
+});
+
+export function logOrder(action: string, orderId: string, data: any = {}) {
+  logger.info({ module: 'orders', orderId, ...data }, `Order ${action}`);
+}
+
+export function logWhatsApp(action: string, phone: string, data: any = {}) {
+  logger.debug({ module: 'whatsapp', phone, ...data }, `WhatsApp ${action}`);
+}
+
+export function logAI(action: string, data: any = {}) {
+  logger.debug({ module: 'ai', ...data }, `AI ${action}`);
+}

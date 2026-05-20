@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(node -e \":*)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"const tp = require\\(''node-thermal-printer''\\); console.log\\(Object.keys\\(tp\\)\\);\")",
+      "Bash(node -e \"const tp = require\\(''node-thermal-printer''\\); console.log\\(tp.PrinterTypes\\);\")",
+      "Bash(npx tsc:*)",
+      "Bash(node -e \"const tp = require\\(''node-thermal-printer''\\); console.log\\(tp.CharacterSet\\);\")",
+      "Bash(npm uninstall:*)",
+      "Bash(node -e \"const b = require\\(''baileys''\\); console.log\\(Object.keys\\(b\\).slice\\(0, 20\\)\\);\")",
+      "Bash(node -e \"const b = require\\(''baileys''\\); console.log\\(''useMultiFileAuthState:'', typeof b.useMultiFileAuthState\\); console.log\\(''DisconnectReason:'', typeof b.DisconnectReason\\);\")",
+      "Bash(timeout 8 npx tsx src/index.ts)",
+      "Bash(timeout 10 npx tsx src/index.ts)",
+      "Bash(timeout 15 npx tsx src/index.ts)",
+      "Bash(npm show:*)",
+      "Bash(node -e \"const b = require\\(''@whiskeysockets/baileys''\\); console.log\\(''fetchLatestBaileysVersion:'', typeof b.fetchLatestBaileysVersion\\); console.log\\(''Browsers:'', typeof b.Browsers\\);\")",
+      "Bash(node -e \"const b = require\\(''@whiskeysockets/baileys''\\); console.log\\(''fetchLatestBaileysVersion:'', typeof b.fetchLatestBaileysVersion\\);\")",
+      "Bash(npx kill-port:*)",
+      "Bash(tasklist)",
+      "Bash(findstr node:*)",
+      "Bash(node -e \"const b = require\\(''@whiskeysockets/baileys''\\); console.log\\(''fetchLatestBaileysVersion:'', typeof b.fetchLatestBaileysVersion\\); console.log\\(''Browsers:'', typeof b.Browsers\\); console.log\\(''Browsers.windows:'', typeof b.Browsers?.windows\\); console.log\\(''version pkg:'', require\\(''@whiskeysockets/baileys/package.json''\\).version\\)\")",
+      "Bash(node -e \"const { Browsers } = require\\(''@whiskeysockets/baileys''\\); console.log\\(''Browsers.windows:'', JSON.stringify\\(Browsers.windows\\(''Chrome''\\)\\)\\)\")",
+      "Bash(node -e \"const p = require\\(''./node_modules/@whiskeysockets/baileys/package.json''\\); console.log\\(p.version\\)\")",
+      "Bash(npm view:*)",
+      "Bash(node -e \"const m = require\\(''@whiskeysockets/baileys''\\); console.log\\(typeof m.fetchLatestBaileysVersion\\)\")",
+      "Bash(curl:*)",
+      "Bash(python -m json.tool)",
+      "Bash(ls -la F:/adega/backend/.env*)"
+    ]
+  }
+}
