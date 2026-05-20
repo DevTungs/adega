@@ -149,6 +149,10 @@ export class WhatsAppHandler {
               return messageFormatter.orderConfirmation(items, subtotal);
             }
           }
+          // AI returned a message (e.g., asking which beer, listing options)
+          if (aiResponse.message) {
+            return aiResponse.message;
+          }
           return 'Não consegui identificar os itens. Pode repetir? Ex: *2 Heineken, 1 Salame* 🍻';
 
         case 'cardapio':
@@ -194,7 +198,7 @@ export class WhatsAppHandler {
       return 'Deseja adicionar mais itens ou cancelar o pedido?\n\n*Adicionar* - voltar ao pedido\n*Cancelar* - cancelar tudo';
     }
 
-    // Try to add more items
+    // Try to add more items or answer product questions
     const aiResponse = await aiService.interpretMessage(message, session);
     if (aiResponse.intent === 'novo_pedido' && aiResponse.products.length > 0) {
       const validProducts = aiResponse.products.filter((p: any) => p.valid && p.product_id);
@@ -207,7 +211,6 @@ export class WhatsAppHandler {
           }
         }
 
-        // Process AI response: update quantities for existing items, add new ones
         for (const p of validProducts) {
           const pid = p.product_id as string;
           const existing = existingMap.get(pid);
@@ -240,6 +243,11 @@ export class WhatsAppHandler {
 
         return messageFormatter.orderConfirmation(displayItems, subtotal);
       }
+    }
+
+    // AI returned a message (e.g., answering "tem outras?" with more options)
+    if (aiResponse.message) {
+      return aiResponse.message;
     }
 
     return 'O que deseja fazer com o pedido?\n\n*Sim* - Confirmar\n*Não* - Cancelar';
