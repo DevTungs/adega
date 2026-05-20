@@ -103,7 +103,7 @@ class NLPService {
           return p ? `• ${p.name} - R$ ${(p.promo_price || p.price).toFixed(2)}` : `• ${name}`;
         }).join('\n');
 
-        const itemList = items.map(i => `• ${i.quantity}x ${i.name}`).join('\n');
+        const itemList = items.map(i => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
 
         return {
           intent: 'novo_pedido',
@@ -140,7 +140,7 @@ class NLPService {
 
       return {
         intent: 'novo_pedido',
-        products: items,
+        products: merged.map((i: any) => ({ ...i, valid: true })),
         message: summary,
         needs_confirmation: true,
         confidence: 0.95,
@@ -254,6 +254,62 @@ class NLPService {
       consumedRanges.push([idx, rangeEnd]);
     }
 
+    // If no alias matched, try fuzzy matching on words
+    if (results.length === 0) {
+      const words = message.split(' ').filter(w => w.length >= 3);
+
+      for (const word of words) {
+        if (matchedProductIds.has(word)) continue;
+
+        // Fuzzy match against all aliases
+        let bestAlias: string | null = null;
+        let bestProduct: any = null;
+        let bestDist = 3; // max distance for 3-5 char words
+
+        for (const [alias, productName] of Object.entries(PRODUCT_ALIASES)) {
+          const dist = this.levenshtein(word, this.normalize(alias));
+          // Scale threshold by word length: longer words allow more distance
+          const threshold = word.length <= 4 ? 1 : word.length <= 6 ? 2 : 3;
+          if (dist < bestDist && dist <= threshold) {
+            bestDist = dist;
+            bestAlias = alias;
+            const candidates = this.allProducts.filter((p: any) =>
+              this.normalize(p.name) === this.normalize(productName)
+            );
+            if (candidates.length > 0) bestProduct = candidates[0];
+          }
+        }
+
+        // Also fuzzy match against product names directly
+        for (const p of this.allProducts) {
+          const nameWords = this.normalize(p.name).split(' ');
+          for (const nw of nameWords) {
+            const dist = this.levenshtein(word, nw);
+            const threshold = word.length <= 4 ? 1 : 2;
+            if (dist < bestDist && dist <= threshold) {
+              bestDist = dist;
+              bestProduct = p;
+              bestAlias = word;
+            }
+          }
+        }
+
+        if (bestProduct && !matchedProductIds.has(bestProduct.id)) {
+          // Extract quantity from before the word
+          const idx = message.indexOf(word);
+          const before = idx > 0 ? message.substring(0, idx).trim() : '';
+          const quantity = this.extractQuantity(before);
+
+          results.push({
+            product: bestProduct,
+            quantity,
+            alias: bestAlias || word,
+          });
+          matchedProductIds.add(bestProduct.id);
+        }
+      }
+    }
+
     return results;
   }
 
@@ -301,10 +357,6 @@ class NLPService {
 
   private buildOrderSummary(items: any[], subtotal: number, isAddition: boolean): string {
     const lines: string[] = [];
-
-    if (isAddition) {
-      lines.push('🛒 *Itens adicionados!*\n');
-    }
 
     lines.push('📋 *Pedido:*\n');
     for (const item of items) {

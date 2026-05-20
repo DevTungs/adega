@@ -146,6 +146,7 @@ class PrinterService {
 
           // Use .NET PrintDocument to send raw bytes
           const psScript = `
+Add-Type -AssemblyName System.Printing
 $printerName = '${printerName.replace(/'/g, "''")}'
 $tmpFile = '${tmpFile.replace(/'/g, "''").replace(/\\/g, '\\\\')}'
 try {
