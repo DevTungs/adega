@@ -81,7 +81,8 @@
       "Bash(node -e \"console.log\\(require\\(''./package.json''\\).version\\)\")",
       "Bash(timeout 20 npx electron .)",
       "Bash(npx --version)",
-      "Bash(node -e \"try { const sharp = require\\(''sharp''\\); console.log\\(''sharp version:'', sharp.versions\\); } catch\\(e\\) { console.error\\(''Error:'', e.message\\); }\")"
+      "Bash(node -e \"try { const sharp = require\\(''sharp''\\); console.log\\(''sharp version:'', sharp.versions\\); } catch\\(e\\) { console.error\\(''Error:'', e.message\\); }\")",
+      "Bash(rm \"E:/adega/electron/icon.ico\")"
     ]
   }
 }
