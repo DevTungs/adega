@@ -5,6 +5,7 @@ import { aiService } from '../../services/ai/ai.service';
 import { productsService } from '../products/products.service';
 import { customersService } from '../customers/customers.service';
 import { ordersService } from '../orders/orders.service';
+import { licenseService } from '../license/license.service';
 import { emitAgentRequest } from '../../services/websocket/ws.server';
 import { logger } from '../../shared/middlewares/logger';
 import { normalizePhone } from '../../shared/utils/phone';
@@ -38,6 +39,12 @@ export class WhatsAppHandler {
     return false;
   }
   async handleMessage(phone: string, message: string, senderName?: string, whatsappJid?: string): Promise<string> {
+    // Block all bot activity when license is invalid
+    const licenseStatus = await licenseService.validateCurrent(false);
+    if (!licenseStatus.canCreateOrders) {
+      return '⚠️ Sistema indisponível no momento. Entre em contato diretamente com o estabelecimento.';
+    }
+
     const normalizedPhone = normalizePhone(phone);
     const session = await whatsappSessionService.getOrCreate(normalizedPhone);
     const normalized = message.toLowerCase().trim();
@@ -92,12 +99,12 @@ export class WhatsAppHandler {
     // "sim" in idle state — show catalog (response to stock warning, etc.)
     if (['sim', 's'].includes(message)) {
       const catalog = await productsService.getCatalog();
-      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Ex: *2 Heineken, 1 Batata*';
+      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Digite o nome dos produtos';
     }
 
     if (message === '2' || ['pedido', 'fazer pedido', 'pedir', 'quero pedir'].includes(message)) {
       const catalog = await productsService.getCatalog();
-      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Ex: *2 Heineken, 1 Batata*';
+      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Digite o nome dos produtos';
     }
 
     if (message === '3' || ['meu pedido', 'status', 'acompanhar'].includes(message)) {
@@ -153,7 +160,7 @@ export class WhatsAppHandler {
             await this.saveHistory(phone, session, message, response.message);
             return response.message;
           }
-          return 'Não consegui identificar os itens. Pode repetir? Ex: *2 Heineken, 1 Batata* 🍻';
+          return 'Não consegui identificar os itens. Pode repetir? Digite o nome dos produtos.';
 
         case 'cardapio':
           const catalog = await productsService.getCatalog();
@@ -190,9 +197,18 @@ export class WhatsAppHandler {
     }
 
     // Check if confirming (with fuzzy tolerance)
-    if (this.isConfirmation(message)) {
+    // But NOT if there's a stock warning — "sim" means "show options", not "confirm"
+    if (this.isConfirmation(message) && !context.stockWarning) {
       await whatsappSessionService.updateState(phone, 'awaiting_name', context);
       return messageFormatter.askName();
+    }
+
+    // "sim" after stock warning → show catalog
+    if (this.isConfirmation(message) && context.stockWarning) {
+      delete context.stockWarning;
+      await whatsappSessionService.updateState(phone, 'idle', context);
+      const catalog = await productsService.getCatalog();
+      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Digite o nome dos produtos';
     }
 
     // Check if wants to cancel — ask first
@@ -206,9 +222,12 @@ export class WhatsAppHandler {
       ? await nlpService.parseMessage(message, session)
       : await aiService.interpretMessage(message, session);
 
+    // Check if response has stock warning
+    const hasStockWarning = aiResponse.message && aiResponse.message.includes('Sem estoque');
+
     // NLP/AI returned products — update session
     if (aiResponse.products.length > 0) {
-      await whatsappSessionService.updateState(phone, 'awaiting_items', {
+      const newContext: any = {
         items: aiResponse.products.map((p: any) => ({
           product_id: p.product_id,
           name: p.name,
@@ -216,23 +235,18 @@ export class WhatsAppHandler {
           price: p.price,
         })),
         history: context.history,
-      });
+      };
+      if (hasStockWarning) newContext.stockWarning = true;
+      await whatsappSessionService.updateState(phone, 'awaiting_items', newContext);
       return aiResponse.message;
     }
 
-    // NLP/AI returned a message (disambiguation, category options, removal, etc.)
+    // NLP/AI returned a message (disambiguation, category options, stock warning, etc.)
     if (aiResponse.message) {
-      // If the response indicates confirmation needed (removal result), update session
-      if (aiResponse.needs_confirmation && aiResponse.products.length > 0) {
-        await whatsappSessionService.updateState(phone, 'awaiting_items', {
-          items: aiResponse.products.map((p: any) => ({
-            product_id: p.product_id,
-            name: p.name,
-            quantity: p.quantity,
-            price: p.price,
-          })),
-          history: context.history,
-        });
+      if (hasStockWarning) {
+        // Save stock warning flag so "sim" shows catalog instead of confirming
+        context.stockWarning = true;
+        await whatsappSessionService.updateState(phone, 'awaiting_items', context);
       }
       return aiResponse.message;
     }
@@ -371,7 +385,7 @@ export class WhatsAppHandler {
     if (['novo pedido', 'novo', 'pedir', 'quero pedir', 'menu', 'cardapio', 'cardápio', '1', '2'].includes(message)) {
       await whatsappSessionService.resetSession(phone);
       const catalog = await productsService.getCatalog();
-      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Ex: *2 Heineken, 1 Batata*';
+      return messageFormatter.catalog(catalog) + '\n\nDigite os itens que deseja! Digite o nome dos produtos';
     }
 
     if (['acompanhar', 'status', 'meu pedido', '3'].includes(message)) {
@@ -398,13 +412,20 @@ export class WhatsAppHandler {
 
     // Create the order
     try {
+      // Check license before creating order
+      const licenseStatus = await licenseService.validateCurrent(false);
+      if (!licenseStatus.canCreateOrders) {
+        await whatsappSessionService.resetSession(phone);
+        return 'Desculpe, o sistema está temporariamente indisponível para novos pedidos. Por favor, tente novamente mais tarde. 😔';
+      }
+
       const customer = await customersService.getOrCreateByPhone(phone);
       const items = (context.items || []).map((item: any) => ({
         product_id: item.product_id,
         quantity: item.quantity,
       }));
 
-      const order = await ordersService.create({
+      const result = await ordersService.create({
         customer_id: customer.id,
         items,
         payment_method: context.paymentMethod,
@@ -412,12 +433,14 @@ export class WhatsAppHandler {
         notes: notes || undefined,
       });
 
+      const { order, stockWarnings } = result as any;
+
       await whatsappSessionService.updateState(phone, 'order_placed', {
         lastOrderId: order.id,
         lastOrderNumber: order.order_number,
       });
 
-      return messageFormatter.orderPlaced(order);
+      return messageFormatter.orderPlaced(order, stockWarnings);
     } catch (error: any) {
       logger.error({ error: error.message }, 'Error creating order');
       await whatsappSessionService.resetSession(phone);

@@ -1,12 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../auth/auth.middleware';
+import { licenseOrderMiddleware } from '../license/license.middleware';
 import { baileysService } from '../../services/whatsapp/baileys.service';
 import { logger } from '../../shared/middlewares/logger';
 
 export async function registerWhatsAppRoutes(app: FastifyInstance) {
   // Connect to WhatsApp
   app.post('/api/whatsapp/connect', {
-    preHandler: [authMiddleware],
+    preHandler: [authMiddleware, licenseOrderMiddleware],
     handler: async (request, reply) => {
       try {
         await baileysService.connect();

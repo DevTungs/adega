@@ -1,5 +1,5 @@
 @echo off
-title Adega Delivery System
+title Delivery System
 cd /d "%~dp0"
 node --version >nul 2>&1
 if %errorlevel% neq 0 (

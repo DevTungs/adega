@@ -12,6 +12,8 @@ import Customers from './pages/Customers';
 import Settings from './pages/Settings';
 import WhatsApp from './pages/WhatsApp';
 import Messages from './pages/Messages';
+import License from './pages/License';
+import UpdateToast from './components/UpdateToast';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
@@ -42,6 +44,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Toaster position="top-right" />
+      <UpdateToast />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route
@@ -60,6 +63,7 @@ export default function App() {
           <Route path="settings" element={<Settings />} />
           <Route path="whatsapp" element={<WhatsApp />} />
           <Route path="messages" element={<Messages />} />
+          <Route path="license" element={<License />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -2,7 +2,7 @@ import { Order, OrderStatus } from '../../shared/types';
 
 export class MessageFormatter {
   catalog(catalog: any[]): string {
-    let msg = '🍷 *Nosso Cardápio*\n\n';
+    let msg = '📋 *Nosso Cardápio*\n\n';
     for (const category of catalog) {
       msg += `*${category.name}*\n`;
       for (const product of category.products) {
@@ -25,7 +25,7 @@ export class MessageFormatter {
       if (promo.description) msg += `  ${promo.description}\n`;
       msg += `  Válido até ${new Date(promo.end_date).toLocaleDateString('pt-BR')}\n\n`;
     }
-    msg += 'Aproveite! 🍻';
+    msg += 'Aproveite!';
     return msg;
   }
 
@@ -39,11 +39,21 @@ export class MessageFormatter {
     return msg;
   }
 
-  orderPlaced(order: any): string {
-    return `✅ *Pedido #${order.order_number} confirmado!*\n\n` +
-           `⏱️ Previsão: 30-45 minutos\n` +
-           (order.delivery_address ? `📍 ${order.delivery_address}\n\n` : '\n') +
-           `Acompanhe pelo menu "Meu Pedido" 📦`;
+  orderPlaced(order: any, stockWarnings?: Array<{ product_name: string; requested: number; available: number }>): string {
+    let msg = `✅ *Pedido #${order.order_number} confirmado!*\n\n` +
+              `⏱️ Previsão: 30-45 minutos\n` +
+              (order.delivery_address ? `📍 ${order.delivery_address}\n\n` : '\n');
+
+    if (stockWarnings && stockWarnings.length > 0) {
+      msg += `⚠️ *Aviso de estoque:*\n`;
+      for (const w of stockWarnings) {
+        msg += `• ${w.product_name} — pediu ${w.requested}, tem ${w.available} em estoque\n`;
+      }
+      msg += `\nEntraremos em contato caso não consigamos atender o pedido completo. 📞\n\n`;
+    }
+
+    msg += `Acompanhe pelo menu "Meu Pedido" 📦`;
+    return msg;
   }
 
   statusUpdate(orderNumber: number, status: OrderStatus): string {
@@ -80,13 +90,13 @@ export class MessageFormatter {
   }
 
   help(): string {
-    return '🍺 *Menu de Ajuda*\n\n' +
+    return '❓ *Menu de Ajuda*\n\n' +
            '• Digite o nome do produto para pedir\n' +
            '• *cardápio* - ver produtos\n' +
            '• *promoções* - ver ofertas\n' +
            '• *meu pedido* - status do pedido\n' +
            '• *ajuda* - este menu\n\n' +
-           'Exemplo: "3 heineken long e 1 red label"';
+           'Exemplo: "2 [produto], 1 [produto]"';
   }
 
   productNotFound(query: string): string {

@@ -3,9 +3,39 @@ import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Load .env from different locations based on environment
+const envPaths = [
+  path.resolve(__dirname, '../../.env'),           // Development
+  path.resolve(process.cwd(), '.env'),              // Production (cwd)
+  path.resolve(process.resourcesPath || '', '.env'), // Electron packaged
+];
 
-const dbPath = path.resolve(__dirname, '../../..', process.env.DB_PATH || './data/adega.db');
+for (const envPath of envPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    break;
+  }
+}
+
+// Resolve DB path - support absolute paths (Electron) or relative paths (dev)
+function resolveDbPath(): string {
+  const dbPathEnv = process.env.DB_PATH || './data/delivery.db';
+
+  // If absolute path, use it directly
+  if (path.isAbsolute(dbPathEnv)) {
+    return dbPathEnv;
+  }
+
+  // If running in Electron (packaged), use userData
+  if (process.env.ELECTRON_USER_DATA) {
+    return path.join(process.env.ELECTRON_USER_DATA, 'data', 'delivery.db');
+  }
+
+  // Development: resolve relative to project root
+  return path.resolve(__dirname, '../../..', dbPathEnv);
+}
+
+const dbPath = resolveDbPath();
 
 // Ensure data directory exists
 const dataDir = path.dirname(dbPath);
@@ -37,10 +67,12 @@ export async function initDatabase(): Promise<DatabaseWrapper> {
   const saveInterval = setInterval(() => wrapper.save(), 5000);
   (wrapper as any)._saveInterval = saveInterval;
 
-  // Save on exit
-  const saveAndExit = () => { wrapper.save(); process.exit(0); };
-  process.on('SIGINT', saveAndExit);
-  process.on('SIGTERM', saveAndExit);
+  // Save on exit (skip signal handlers in Electron — main process handles lifecycle)
+  if (!process.versions.electron) {
+    const saveAndExit = () => { wrapper.save(); process.exit(0); };
+    process.on('SIGINT', saveAndExit);
+    process.on('SIGTERM', saveAndExit);
+  }
   process.on('exit', () => wrapper.save());
 
   return wrapper;

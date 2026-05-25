@@ -99,6 +99,7 @@ export class OrdersModel {
     delivery_fee?: number;
     total: number;
     whatsapp_message_id?: string;
+    metadata?: string;
   }): Order {
     const db = getDb();
     const id = uuid();
@@ -123,7 +124,7 @@ export class OrdersModel {
       whatsapp_message_id: data.whatsapp_message_id || null,
       notes: data.notes || null,
       cancel_reason: null,
-      metadata: '{}',
+      metadata: data.metadata || '{}',
       confirmed_at: null,
       preparing_at: null,
       ready_at: null,

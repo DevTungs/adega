@@ -34,13 +34,16 @@ export class OrdersService {
   }) {
     // Validate products and calculate totals
     const items: Array<{ product_id: string; product_name: string; quantity: number; unit_price: number; notes?: string }> = [];
+    const stockWarnings: Array<{ product_name: string; requested: number; available: number }> = [];
     let subtotal = 0;
 
     for (const item of data.items) {
       const product = await productsModel.findById(item.product_id);
       if (!product) throw AppError.badRequest(`Produto não encontrado: ${item.product_id}`);
       if (product.is_active !== 1) throw AppError.badRequest(`Produto inativo: ${product.name}`);
-      if (product.stock < item.quantity) throw AppError.badRequest(`Estoque insuficiente para ${product.name}`);
+      if (product.stock < item.quantity) {
+        stockWarnings.push({ product_name: product.name, requested: item.quantity, available: product.stock });
+      }
 
       const price = product.promo_price || product.price;
       items.push({
@@ -53,11 +56,14 @@ export class OrdersService {
       subtotal += price * item.quantity;
     }
 
+    const metadata = stockWarnings.length > 0 ? JSON.stringify({ stockWarnings }) : undefined;
+
     const order = await ordersModel.create({
       ...data,
       items,
       subtotal,
       total: subtotal,
+      metadata,
     });
 
     // Update customer stats
@@ -68,7 +74,7 @@ export class OrdersService {
       await productsModel.updateStock(item.product_id, -item.quantity);
     }
 
-    logger.info({ orderId: order.id, orderNumber: order.order_number }, 'Order created');
+    logger.info({ orderId: order.id, orderNumber: order.order_number, stockWarnings: stockWarnings.length }, 'Order created');
 
     // Emit WebSocket event
     try { emitOrderNew(order); } catch { /* WS not critical */ }
@@ -76,7 +82,7 @@ export class OrdersService {
     // Print order
     try { printerService.printOrder(order); } catch { /* Printer not critical */ }
 
-    return order;
+    return { order, stockWarnings };
   }
 
   async updateStatus(id: string, status: OrderStatus, changedBy: string = 'admin', notes?: string) {

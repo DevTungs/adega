@@ -38,6 +38,8 @@ const NUMBER_WORDS: Record<string, number> = {
 class NLPService {
   private catalog: any[] = [];
   private allProducts: any[] = [];
+  private dbAliases: Record<string, string> = {};
+  private dbCategorySuggestions: Record<string, string[]> = {};
   private catalogLoaded = false;
 
   private normalize(text: string): string {
@@ -54,6 +56,28 @@ class NLPService {
     if (!this.catalogLoaded) {
       this.catalog = await productsService.getCatalog();
       this.allProducts = this.catalog.flatMap((cat: any) => cat.products);
+
+      // Load aliases from DB
+      try {
+        const db = getDb();
+        const rows = db.all('SELECT pa.alias, p.name FROM product_aliases pa JOIN products p ON p.id = pa.product_id');
+        this.dbAliases = {};
+        for (const row of rows) {
+          this.dbAliases[this.normalize(row.alias)] = row.name;
+        }
+      } catch { /* ignore */ }
+
+      // Build category suggestions from catalog
+      this.dbCategorySuggestions = {};
+      for (const cat of this.catalog) {
+        if (cat.products && cat.products.length > 0) {
+          const names = cat.products.map((p: any) => p.name);
+          this.dbCategorySuggestions[this.normalize(cat.name)] = names;
+          // Also add slug as key
+          if (cat.slug) this.dbCategorySuggestions[this.normalize(cat.slug)] = names;
+        }
+      }
+
       this.catalogLoaded = true;
     }
   }
@@ -87,7 +111,7 @@ class NLPService {
         };
       }
 
-      // Check if there's a category keyword in the message (e.g., "coca zero, cerveja e batata")
+      // Check if there's a category keyword in the message (e.g., "produto1, categoria e produto2")
       const categoryMatch = this.matchCategory(normalized);
       if (categoryMatch) {
         const items: ParsedItem[] = [];
@@ -125,7 +149,7 @@ class NLPService {
         return {
           intent: 'novo_pedido',
           products: items,
-          message: `${warning}📋 Já anotei:\n${itemList}\n\n🍺 Para ${categoryMatch.category}, temos:\n${options}\n\nQual prefere?`,
+          message: `${warning}📋 Já anotei:\n${itemList}\n\n📋 Para ${categoryMatch.category}, temos:\n${options}\n\nQual prefere?`,
           needs_confirmation: false,
           confidence: 0.9,
           suggestions: categoryMatch.products,
@@ -218,7 +242,7 @@ class NLPService {
       };
     }
 
-    // 4. Check for category keywords (generic: "quero cerveja")
+    // 4. Check for category keywords (generic: "quero [categoria]")
     const categoryMatch = this.matchCategory(normalized);
     if (categoryMatch) {
       const options = categoryMatch.products.map((name: string) => {
@@ -241,7 +265,7 @@ class NLPService {
       return {
         intent: 'novo_pedido',
         products: [],
-        message: 'O que você gostaria de pedir? 😊\n\nExemplos:\n• *2 Coca Zero*\n• *1 Heineken e 1 Batata*\n• *3 Skol*',
+        message: 'O que você gostaria de pedir? 😊\n\nDigite o nome do produto que deseja.',
         needs_confirmation: false,
         confidence: 0.7,
         suggestions: [],
@@ -272,8 +296,9 @@ class NLPService {
     const results: Array<{ product: any; quantity: number; alias: string; ambiguous?: boolean; options?: any[] }> = [];
     const consumedRanges: Array<[number, number]> = []; // track matched character ranges
 
-    // Sort aliases by length (longest first) to prefer more specific matches
-    const sortedAliases = Object.entries(PRODUCT_ALIASES)
+    // Merge DB aliases with static aliases, sort by length (longest first)
+    const allAliases = { ...this.dbAliases, ...PRODUCT_ALIASES };
+    const sortedAliases = Object.entries(allAliases)
       .sort((a, b) => b[0].length - a[0].length);
 
     // Track which product IDs were already matched to avoid duplicates
@@ -336,7 +361,7 @@ class NLPService {
         let bestProduct: any = null;
         let bestDist = 3; // max distance for 3-5 char words
 
-        for (const [alias, productName] of Object.entries(PRODUCT_ALIASES)) {
+        for (const [alias, productName] of Object.entries(allAliases)) {
           const dist = this.levenshtein(word, this.normalize(alias));
           // Scale threshold by word length: longer words allow more distance
           const threshold = word.length <= 4 ? 1 : word.length <= 6 ? 2 : 3;
@@ -587,7 +612,9 @@ class NLPService {
   }
 
   private matchCategory(message: string): { category: string; products: string[] } | null {
-    for (const [cat, products] of Object.entries(CATEGORY_SUGGESTIONS)) {
+    // Merge DB category suggestions with static ones
+    const allSuggestions = { ...this.dbCategorySuggestions, ...CATEGORY_SUGGESTIONS };
+    for (const [cat, products] of Object.entries(allSuggestions)) {
       if (message.includes(this.normalize(cat))) {
         return { category: cat, products };
       }
@@ -646,7 +673,8 @@ class NLPService {
     // Try to find category from context
     const category = this.getCategoryFromContext(context);
     if (category) {
-      const catData = CATEGORY_SUGGESTIONS[category];
+      const allSuggestions = { ...this.dbCategorySuggestions, ...CATEGORY_SUGGESTIONS };
+      const catData = allSuggestions[category];
       if (catData) {
         const options = catData.map((name: string) => {
           const p = this.allProducts.find((ap: any) => this.normalize(ap.name).includes(this.normalize(name)));
@@ -670,9 +698,10 @@ class NLPService {
   private getCategoryFromContext(context: any): string | null {
     if (!context.history) return null;
     const recent = context.history.slice(-4);
+    const allSuggestions = { ...this.dbCategorySuggestions, ...CATEGORY_SUGGESTIONS };
     for (const msg of recent) {
       const content = this.normalize(msg.content || '');
-      for (const cat of Object.keys(CATEGORY_SUGGESTIONS)) {
+      for (const cat of Object.keys(allSuggestions)) {
         if (content.includes(this.normalize(cat))) return cat;
       }
     }
@@ -704,7 +733,7 @@ class NLPService {
       case 'ajuda':
         return 'Como posso ajudar?\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente';
       default:
-        return 'Desculpe, não entendi. 😅\n\nDigite o que deseja pedir!\nEx: *2 Coca Zero, 1 Heineken*';
+        return 'Desculpe, não entendi. 😅\n\nDigite o que deseja pedir!';
     }
   }
 }

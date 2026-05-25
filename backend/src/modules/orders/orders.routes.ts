@@ -4,6 +4,7 @@ import { ordersService } from './orders.service';
 import { printerService } from '../../services/printer/printer.service';
 import { authMiddleware, getUser } from '../auth/auth.middleware';
 import { validateBody } from '../../shared/middlewares/validation';
+import { licenseOrderMiddleware } from '../license/license.middleware';
 
 const createOrderSchema = z.object({
   customer_id: z.string().min(1),
@@ -57,10 +58,11 @@ export async function registerOrderRoutes(app: FastifyInstance) {
 
   // Create
   app.post('/api/orders', {
-    preHandler: [authMiddleware, validateBody(createOrderSchema)],
+    preHandler: [authMiddleware, validateBody(createOrderSchema), licenseOrderMiddleware],
     handler: async (request, reply) => {
-      const order = await ordersService.create(request.body as any);
-      reply.status(201).send({ success: true, data: order });
+      const result = await ordersService.create(request.body as any);
+      const { order, stockWarnings } = result as any;
+      reply.status(201).send({ success: true, data: order, stockWarnings });
     },
   });
 

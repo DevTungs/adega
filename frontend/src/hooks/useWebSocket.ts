@@ -3,12 +3,16 @@ import { io, Socket } from 'socket.io-client';
 import { useOrderStore } from '../stores/orderStore';
 import toast from 'react-hot-toast';
 
+// Detect if running in Electron (file:// protocol)
+const isElectron = window.location.protocol === 'file:';
+const wsOrigin = isElectron ? 'http://localhost:3333' : window.location.origin;
+
 export function useWebSocket() {
   const socketRef = useRef<Socket | null>(null);
   const { addOrder, updateOrder } = useOrderStore();
 
   useEffect(() => {
-    const socket = io(window.location.origin, {
+    const socket = io(wsOrigin, {
       transports: ['websocket', 'polling'],
     });
 
@@ -43,7 +47,7 @@ export function useWebSocket() {
           o.id === orderId ? { ...o, status } : o
         ),
         selectedOrder: selectedOrder?.id === orderId
-          ? { ...selectedOrder, status }
+          ? ({ ...selectedOrder, status } as typeof selectedOrder)
           : selectedOrder,
       });
     });

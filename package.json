@@ -1,14 +1,83 @@
 {
-  "name": "adega-delivery",
+  "name": "painel-delivery",
   "version": "1.0.0",
-  "description": "Sistema de Delivery para Adega",
+  "description": "Sistema de Delivery - Painel Administrativo",
+  "main": "electron/main.js",
+  "author": "Painel Delivery",
   "private": true,
   "scripts": {
     "start": "node start.js",
-    "setup": "setup.bat"
+    "setup": "setup.bat",
+    "electron:dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:start": "electron .",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build:backend && npm run build:frontend && electron-builder --win --publish never",
+    "publish": "npm run build:backend && npm run build:frontend && electron-builder --win --publish always"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^7.0.0-rc11",
-    "open": "^11.0.0"
+    "dotenv": "^16.4.0",
+    "electron-updater": "^6.8.3"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^34.0.0",
+    "electron-builder": "^24.9.1",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.delivery.painel",
+    "productName": "Painel Delivery",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "frontend/dist",
+        "to": "frontend"
+      },
+      {
+        "from": "backend/dist",
+        "to": "backend"
+      },
+      {
+        "from": "build-resources/backend/node_modules",
+        "to": "backend/node_modules"
+      },
+      {
+        "from": "build-resources/backend/package.json",
+        "to": "backend/package.json"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signingHashAlgorithms": null,
+      "verifyUpdateCodeSignature": false,
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Painel Delivery"
+    },
+    "asar": true,
+    "publish": [{
+      "provider": "github",
+      "owner": "Kevick",
+      "repo": "adega"
+    }]
   }
 }

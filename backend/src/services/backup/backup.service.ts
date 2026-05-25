@@ -4,7 +4,7 @@ import { logger } from '../../shared/middlewares/logger';
 
 export class BackupService {
   private backupDir = path.resolve(__dirname, '../../../data/backups');
-  private dbPath = path.resolve(__dirname, '../../../data/adega.db');
+  private dbPath = path.resolve(__dirname, '../../../data/delivery.db');
 
   constructor() {
     if (!fs.existsSync(this.backupDir)) {

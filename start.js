@@ -13,13 +13,11 @@ const C = {
 
 const logo = `
 ${C.green}${C.bold}
-    ___    ____  ________  _______
-   /   |  / __ \\/ ____/ |/ / ___/
-  / /| | / / / / __/  |   /\\__ \\
- / ___ |/ /_/ / /___ /   |___/ /
-/_/  |_/_____/_____//_/|_/____/
+  +---------------------------+
+  |   DELIVERY  SYSTEM  v1   |
+  +---------------------------+
 ${C.reset}
-${C.dim}  Sistema de Delivery para Adega${C.reset}
+${C.dim}  Sistema de Delivery${C.reset}
 `;
 
 function ts() {

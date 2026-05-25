@@ -2,11 +2,16 @@ import { WhatsAppSession } from '../../shared/types';
 import { productsService } from '../../modules/products/products.service';
 import { customersModel } from '../../modules/customers/customers.model';
 import { ordersModel } from '../../modules/orders/orders.model';
+import { getDb } from '../../config/database';
 import { SYSTEM_PROMPT } from './ai.prompts';
 import { logger } from '../../shared/middlewares/logger';
 
 export async function buildAIContext(session: WhatsAppSession, message: string) {
   const catalog = await productsService.getCatalog();
+
+  // Get store name from settings
+  const storeSetting = getDb().get("SELECT value FROM settings WHERE key = 'store_name'");
+  const storeName = storeSetting?.value || 'Nossa Loja';
   const context = JSON.parse(session.context || '{}');
 
   logger.info({
@@ -47,6 +52,7 @@ export async function buildAIContext(session: WhatsAppSession, message: string) 
   const promotionsText = 'Nenhuma promoção ativa no momento.';
 
   const systemPrompt = SYSTEM_PROMPT
+    .replace('{{STORE_NAME}}', storeName)
     .replace('{{CATALOG}}', catalogText)
     .replace('{{PROMOTIONS}}', promotionsText)
     .replace('{{CUSTOMER_NAME}}', customerName)

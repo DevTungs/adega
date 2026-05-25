@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+// Detect if running in Electron (file:// protocol)
+const isElectron = window.location.protocol === 'file:';
+const apiBase = isElectron ? 'http://localhost:3333/api' : '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBase,
   timeout: 10000,
 });
 
@@ -16,6 +20,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 402 && error.response?.data?.error === 'LICENSE_REQUIRED') {
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       window.location.href = '/login';

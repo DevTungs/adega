@@ -27,7 +27,29 @@
       "Bash(node -e \"const m = require\\(''@whiskeysockets/baileys''\\); console.log\\(typeof m.fetchLatestBaileysVersion\\)\")",
       "Bash(curl:*)",
       "Bash(python -m json.tool)",
-      "Bash(ls -la F:/adega/backend/.env*)"
+      "Bash(ls -la F:/adega/backend/.env*)",
+      "Bash(chmod:*)",
+      "Bash(npm:*)",
+      "Bash(./node_modules/.bin/tsc --pretty false)",
+      "Bash(node node_modules/typescript/bin/tsc --pretty false)",
+      "Bash(git:*)",
+      "Bash(npx electron-builder:*)",
+      "Bash(CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --win --publish never)",
+      "Bash(ls -la E:/adega/release/*.exe)",
+      "Bash(taskkill //F //IM 'Painel Delivery.exe')",
+      "Bash(rm -rf E:/adega/release/win-unpacked)",
+      "Bash(du -sh node_modules/*)",
+      "Bash(rm:*)",
+      "Bash(rm -rf E:/adega/release E:/adega/build-resources)",
+      "Bash(mkdir -p E:/adega/build-resources/backend)",
+      "Bash(cp E:/adega/backend/package.json E:/adega/build-resources/backend/)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d.get\\(''''packages'''',{}\\)\\)\\)\")",
+      "Bash(DEBUG=*)",
+      "Bash(find E:/adega/release/win-unpacked/resources/backend/ -name *.js -maxdepth 1)",
+      "Bash(mkdir:*)",
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npx electron-builder --win --publish never)",
+      "Bash(taskkill //F //IM electron.exe)",
+      "Bash(NODE_OPTIONS=--max-old-space-size=4096 npx electron-builder --win --publish never)"
     ]
   }
 }

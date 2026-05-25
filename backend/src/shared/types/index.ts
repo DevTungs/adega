@@ -200,6 +200,22 @@ export interface AdminUser {
   updated_at: string;
 }
 
+export type LicenseStatus = 'active' | 'expired' | 'blocked' | 'invalid' | 'pending' | 'tampered';
+
+export interface License {
+  id: string;
+  license_key: string;
+  status: LicenseStatus;
+  customer_name: string | null;
+  machine_fingerprint: string;
+  expires_at: string | null;
+  last_validated_at: string | null;
+  last_error: string | null;
+  metadata: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AIResponse {
   intent: string;
   products: Array<{
