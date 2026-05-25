@@ -73,7 +73,8 @@
       "Bash(cd:*)",
       "Bash(find dist:*)",
       "Bash(node scripts/prune-backend.js)",
-      "Bash(ls -lh E:/adega/release/*.exe)"
+      "Bash(ls -lh E:/adega/release/*.exe)",
+      "Bash(node -e \"require\\(''''./backend/dist/index.js''''\\)\")"
     ]
   }
 }

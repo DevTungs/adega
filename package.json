@@ -10,7 +10,8 @@
     "setup": "setup.bat",
     "electron:dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:start": "electron .",
-    "build:backend": "cd backend && npm run build && find dist -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.js.map' | xargs rm -f",
+    "build": "npm run build:all",
+    "build:backend": "cd backend && npm run build",
     "build:frontend": "cd frontend && npm run build",
     "build:all": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && electron-builder --win --publish never",
     "publish": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && node scripts/publish.js"
