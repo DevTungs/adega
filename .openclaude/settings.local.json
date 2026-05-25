@@ -49,7 +49,11 @@
       "Bash(mkdir:*)",
       "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" npx electron-builder --win --publish never)",
       "Bash(taskkill //F //IM electron.exe)",
-      "Bash(NODE_OPTIONS=--max-old-space-size=4096 npx electron-builder --win --publish never)"
+      "Bash(NODE_OPTIONS=--max-old-space-size=4096 npx electron-builder --win --publish never)",
+      "Bash(gh auth:*)",
+      "Bash(where gh:*)",
+      "Bash(gh repo:*)",
+      "Bash(GH_TOKEN=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 NODE_OPTIONS=\"--max-old-space-size=4096\" npm run publish)"
     ]
   }
 }

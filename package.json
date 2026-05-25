@@ -13,7 +13,7 @@
     "build:backend": "cd backend && npm run build",
     "build:frontend": "cd frontend && npm run build",
     "build:all": "npm run build:backend && npm run build:frontend && electron-builder --win --publish never",
-    "publish": "npm run build:backend && npm run build:frontend && electron-builder --win --publish always"
+    "publish": "npm run build:backend && npm run build:frontend && node scripts/publish.js"
   },
   "dependencies": {
     "dotenv": "^16.4.0",
