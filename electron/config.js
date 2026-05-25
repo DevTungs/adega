@@ -43,10 +43,6 @@ HOST=127.0.0.1
 NODE_ENV=production
 LOG_LEVEL=basic
 
-# JWT
-JWT_SECRET=${generateRandomSecret()}
-JWT_EXPIRES_IN=360d
-
 # Database
 DB_PATH=${getDbPath()}
 
