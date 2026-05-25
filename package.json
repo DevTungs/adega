@@ -1,6 +1,6 @@
 {
   "name": "painel-delivery",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Sistema de Delivery - Painel Administrativo",
   "main": "electron/main.js",
   "author": "Painel Delivery",
@@ -58,6 +58,7 @@
       }
     ],
     "win": {
+      "icon": "electron/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -76,7 +77,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Painel Delivery"
+      "shortcutName": "Painel Delivery",
+      "installerIcon": "electron/icon.ico",
+      "uninstallerIcon": "electron/icon.ico"
     },
     "publish": [{
       "provider": "github",

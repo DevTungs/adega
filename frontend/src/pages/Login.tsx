@@ -8,6 +8,7 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [storeName, setStoreName] = useState('');
+  const [appVersion, setAppVersion] = useState('');
   const { login, isLoading } = useAuthStore();
   const navigate = useNavigate();
 
@@ -18,6 +19,8 @@ export default function Login() {
         document.title = `${data.data} - Painel Administrativo`;
       }
     }).catch(() => {});
+
+    window.electronAPI?.getAppVersion().then((v: string) => setAppVersion(v)).catch(() => {});
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,7 +48,7 @@ export default function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="input"
-              placeholder="admin"
+              placeholder="usuario"
               required
             />
           </div>
@@ -63,11 +66,14 @@ export default function Login() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3 text-lg bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+            className="btn-primary w-full"
           >
             {isLoading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
+        {appVersion && (
+          <p className="text-center text-xs text-gray-400 mt-6">v{appVersion}</p>
+        )}
       </div>
     </div>
   );

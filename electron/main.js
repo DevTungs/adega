@@ -3,10 +3,18 @@ const path = require('path');
 const fs = require('fs');
 const { loadElectronEnv } = require('./config');
 const { getBackendPath } = require('./utils');
-const { setupUpdater } = require('./updater');
+const { setupUpdater, checkAndUpdate } = require('./updater');
 
 let mainWindow = null;
 let backendServer = null;
+
+function updateLoadingText(text) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.executeJavaScript(
+      `document.querySelector('.status-text').textContent = ${JSON.stringify(text)};`
+    ).catch(() => {});
+  }
+}
 
 // Load environment variables before anything else
 loadElectronEnv();
@@ -56,7 +64,7 @@ const LOADING_HTML = `<!DOCTYPE html>
   <div class="card">
     <div class="spinner"></div>
     <h1>Iniciando sistema</h1>
-    <p>Preparando o ambiente<span class="dots"></span></p>
+    <p class="status-text">Verificando atualizações<span class="dots"></span></p>
   </div>
 </body>
 </html>`;
@@ -135,7 +143,7 @@ async function startBackend() {
     const backendPath = getBackendPath();
     if (!fs.existsSync(backendPath)) {
       console.error('[Electron] Backend dist not found at:', backendPath);
-      return false;
+      return { ok: false, error: 'Backend dist not found at: ' + backendPath };
     }
 
     const originalExit = process.exit.bind(process);
@@ -148,24 +156,37 @@ async function startBackend() {
     try {
       const serverModule = require(path.join(backendPath, 'index.js'));
       if (typeof serverModule.start === 'function') {
-        backendServer = await serverModule.start();
+        // Timeout: se start() demorar mais de 45s, falha
+        const startPromise = serverModule.start();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Backend start() timeout (45s)')), 45000)
+        );
+        backendServer = await Promise.race([startPromise, timeoutPromise]);
       } else if (typeof serverModule.default === 'function') {
-        backendServer = await serverModule.default();
+        const startPromise = serverModule.default();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Backend default() timeout (45s)')), 45000)
+        );
+        backendServer = await Promise.race([startPromise, timeoutPromise]);
       }
+    } catch (startErr) {
+      console.error('[Electron] Backend start() threw:', startErr);
+      process.exit = originalExit;
+      return { ok: false, error: startErr.message || String(startErr) };
     } finally {
       process.exit = originalExit;
     }
 
     if (exitCode !== null) {
       console.error(`[Electron] Backend init failed (exit code ${exitCode})`);
-      return false;
+      return { ok: false, error: `Backend tentou sair com código ${exitCode}` };
     }
 
     console.log('[Electron] Backend started successfully');
-    return true;
+    return { ok: true };
   } catch (err) {
     console.error('[Electron] Failed to start backend:', err);
-    return false;
+    return { ok: false, error: err.message || String(err) };
   }
 }
 
@@ -210,16 +231,31 @@ app.whenReady().then(async () => {
   // 1. Create window with loading screen
   createWindow();
 
-  // 1.5. Start auto-updater (runs in parallel with backend)
+  // 1.5. Setup updater IPC handlers
   setupUpdater(mainWindow);
 
-  // 2. Start backend
-  const backendStarted = await startBackend();
+  // 2. Check for updates BEFORE starting backend (only in packaged mode)
+  if (app.isPackaged) {
+    const updateResult = await checkAndUpdate();
 
-  if (!backendStarted) {
+    if (updateResult.downloaded) {
+      // Update downloaded — install and restart
+      const { autoUpdater } = require('electron-updater');
+      autoUpdater.quitAndInstall(true, true);
+      return; // App will restart
+    }
+  }
+
+  // 3. No update (or dev mode) — continue normal startup
+  updateLoadingText('Iniciando sistema...');
+
+  // 4. Start backend
+  const backendResult = await startBackend();
+
+  if (!backendResult.ok) {
     mainWindow.loadURL(`data:text/html,${encodeURIComponent(ERROR_HTML_TEMPLATE(
       'Erro ao iniciar',
-      'Nao foi possivel iniciar o servidor interno. Verifique os logs do sistema.'
+      'Nao foi possivel iniciar o servidor interno:\\n\\n' + (backendResult.error || 'Erro desconhecido')
     ))}`);
     return;
   }
@@ -238,11 +274,16 @@ app.whenReady().then(async () => {
   try {
     await mainWindow.loadURL('http://127.0.0.1:3333');
   } catch (err) {
-    console.error('[Electron] Failed to load frontend:', err);
-    mainWindow.loadURL(`data:text/html,${encodeURIComponent(ERROR_HTML_TEMPLATE(
-      'Erro ao carregar',
-      'O servidor iniciou mas a pagina nao carregou. Erro: ' + err.message
-    ))}`);
+    // ERR_ABORTED (-3) is expected — the loading screen was cancelled by the new navigation
+    if (err.errno === -3 || err.code === 'ERR_ABORTED') {
+      console.log('[Electron] Frontend navigation started (previous page aborted — normal)');
+    } else {
+      console.error('[Electron] Failed to load frontend:', err);
+      mainWindow.loadURL(`data:text/html,${encodeURIComponent(ERROR_HTML_TEMPLATE(
+        'Erro ao carregar',
+        'O servidor iniciou mas a pagina nao carregou. Erro: ' + err.message
+      ))}`);
+    }
   }
 
   app.on('activate', () => {

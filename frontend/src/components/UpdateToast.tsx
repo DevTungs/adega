@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 declare global {
   interface Window {
     electronAPI?: {
+      getAppVersion: () => Promise<string>;
       onUpdateAvailable: (cb: (_: any, data: any) => void) => void;
       onUpdateDownloadProgress: (cb: (_: any, data: any) => void) => void;
       onUpdateDownloaded: (cb: (_: any, data: any) => void) => void;

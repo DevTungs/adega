@@ -74,7 +74,14 @@
       "Bash(find dist:*)",
       "Bash(node scripts/prune-backend.js)",
       "Bash(ls -lh E:/adega/release/*.exe)",
-      "Bash(node -e \"require\\(''''./backend/dist/index.js''''\\)\")"
+      "Bash(node -e \"require\\(''''./backend/dist/index.js''''\\)\")",
+      "Bash(DB_PATH=\"E:/adega/test.db\" WA_SESSION_PATH=\"E:/adega/test_sessions\" BACKUP_PATH=\"E:/adega/test_backups\" ELECTRON_USER_DATA=\"E:/adega\" FRONTEND_PATH=\"E:/adega/frontend/dist\" HOST=127.0.0.1 PORT=3334 NODE_ENV=production node -e \":*)",
+      "Bash(GH_TOKEN=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 npx electron-builder --win --publish always)",
+      "Bash(GH_TOKEN=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 npm run build:backend)",
+      "Bash(node -e \"console.log\\(require\\(''./package.json''\\).version\\)\")",
+      "Bash(timeout 20 npx electron .)",
+      "Bash(npx --version)",
+      "Bash(node -e \"try { const sharp = require\\(''sharp''\\); console.log\\(''sharp version:'', sharp.versions\\); } catch\\(e\\) { console.error\\(''Error:'', e.message\\); }\")"
     ]
   }
 }
