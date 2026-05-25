@@ -110,7 +110,7 @@ function setupUpdater(window) {
   });
 
   ipcMain.handle('install-update', () => {
-    autoUpdater.quitAndInstall(true, true);
+    autoUpdater.quitAndInstall(false, true);
   });
 }
 

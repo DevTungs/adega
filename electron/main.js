@@ -239,9 +239,11 @@ app.whenReady().then(async () => {
     const updateResult = await checkAndUpdate();
 
     if (updateResult.downloaded) {
-      // Update downloaded — install and restart
+      // Update downloaded — show installer UI so user sees progress
+      updateLoadingText('Instalando atualização... O instalador será aberto.');
+      await new Promise(r => setTimeout(r, 1500));
       const { autoUpdater } = require('electron-updater');
-      autoUpdater.quitAndInstall(true, true);
+      autoUpdater.quitAndInstall(false, true);
       return; // App will restart
     }
   }
