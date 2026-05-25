@@ -77,7 +77,7 @@
     "publish": [{
       "provider": "github",
       "owner": "Kevick",
-      "repo": "adega"
+      "repo": "painel-delivery-releases"
     }]
   }
 }
