@@ -10,6 +10,8 @@ import clientRoutes from './routes/client.routes';
 import planRoutes from './routes/plan.routes';
 import licenseRoutes from './routes/license.routes';
 import clientLicenseRoutes from './routes/client-license.routes';
+import clientAuthRoutes from './routes/client-auth.routes';
+import clientUserRoutes from './routes/client-user.routes';
 import statsRoutes from './routes/stats.routes';
 
 const app = express();
@@ -29,8 +31,10 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/plans', planRoutes);
 app.use('/api/licenses', licenseRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/client-users', clientUserRoutes);
 
-// Client-facing routes (authenticated by license key + fingerprint, no JWT)
+// Client-facing routes (no JWT)
+app.use('/api/client/auth', clientAuthRoutes);
 app.use('/api/client/licenses', clientLicenseRoutes);
 
 // Serve admin frontend in production

@@ -7,6 +7,7 @@ import Clients from './pages/Clients';
 import Plans from './pages/Plans';
 import Licenses from './pages/Licenses';
 import LicenseDetail from './pages/LicenseDetail';
+import ClientUsers from './pages/ClientUsers';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="plans" element={<Plans />} />
         <Route path="licenses" element={<Licenses />} />
         <Route path="licenses/:id" element={<LicenseDetail />} />
+        <Route path="client-users" element={<ClientUsers />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

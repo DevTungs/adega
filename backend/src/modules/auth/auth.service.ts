@@ -1,39 +1,42 @@
-import bcrypt from 'bcryptjs';
-import { qb } from '../../config/database';
+import axios from 'axios';
 import { AppError } from '../../shared/errors/app-error';
-import { AdminUser } from '../../shared/types';
+
+const LICENSE_API_URL = process.env.LICENSE_API_URL || 'http://localhost:3400';
 
 export class AuthService {
   async login(username: string, password: string) {
-    const user = qb.selectOne('admin_users', '*', 'username = ? AND is_active = ?', [username, 1]) as AdminUser | undefined;
+    try {
+      const response = await axios.post(`${LICENSE_API_URL}/api/client/auth/login`, {
+        username,
+        password,
+      });
 
-    if (!user) {
-      throw AppError.unauthorized('Credenciais inválidas');
+      if (!response.data.success) {
+        throw AppError.unauthorized('Credenciais inválidas');
+      }
+
+      return response.data.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw AppError.unauthorized('Credenciais inválidas');
+      }
+      throw AppError.internal('Erro ao conectar com servidor de licenças');
     }
-
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      throw AppError.unauthorized('Credenciais inválidas');
-    }
-
-    qb.update('admin_users', { last_login_at: new Date().toISOString() }, 'id = ?', [user.id]);
-
-    return {
-      id: user.id,
-      username: user.username,
-      name: user.name,
-      role: user.role,
-    };
   }
 
-  async getProfile(userId: string) {
-    const user = qb.selectOne('admin_users', 'id, username, name, role, last_login_at, created_at', 'id = ?', [userId]);
-
-    if (!user) {
-      throw AppError.notFound('Usuário não encontrado');
+  async getProfile(userId: string, tokenPayload?: any) {
+    // Profile data comes from the JWT token since auth is now via license-server
+    if (tokenPayload) {
+      return {
+        id: tokenPayload.id,
+        username: tokenPayload.username,
+        name: tokenPayload.name,
+        role: tokenPayload.role,
+        client_id: tokenPayload.client_id,
+        client_name: tokenPayload.client_name,
+      };
     }
-
-    return user;
+    return { id: userId };
   }
 }
 

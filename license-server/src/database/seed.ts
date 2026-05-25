@@ -30,6 +30,19 @@ async function seed() {
     console.log('[Seed] Admin already exists');
   }
 
+  // Default app user (client_users) — admin/admin123, no client_id (super admin)
+  const [existingUser] = await conn.execute('SELECT id FROM client_users WHERE username = ?', [adminUser]);
+  if ((existingUser as any[]).length === 0) {
+    const hash = bcrypt.hashSync(adminPass, 10);
+    await conn.execute(
+      'INSERT INTO client_users (id, client_id, username, password_hash, name, role) VALUES (?, NULL, ?, ?, ?, ?)',
+      [uuid(), adminUser, hash, 'Administrador', 'admin']
+    );
+    console.log(`[Seed] App user created: ${adminUser}`);
+  } else {
+    console.log('[Seed] App user already exists');
+  }
+
   // Default monthly plan
   const [plans] = await conn.execute('SELECT id FROM plans WHERE name = ?', ['Mensal']);
   if ((plans as any[]).length === 0) {

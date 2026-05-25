@@ -19,7 +19,10 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       const token = app.jwt.sign({
         id: user.id,
         username: user.username,
+        name: user.name,
         role: user.role,
+        client_id: user.client_id,
+        client_name: user.client_name,
       });
 
       reply.send({
@@ -34,7 +37,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     preHandler: [authMiddleware],
     handler: async (request, reply) => {
       const user = getUser(request);
-      const profile = await authService.getProfile(user.id);
+      const profile = await authService.getProfile(user.id, user);
       reply.send({ success: true, data: profile });
     },
   });

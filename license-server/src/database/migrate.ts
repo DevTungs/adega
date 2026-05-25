@@ -93,6 +93,21 @@ async function migrate() {
     )
   `);
 
+  await conn.execute(`
+    CREATE TABLE IF NOT EXISTS client_users (
+      id VARCHAR(36) PRIMARY KEY,
+      client_id VARCHAR(36),
+      username VARCHAR(100) NOT NULL UNIQUE,
+      password_hash VARCHAR(255) NOT NULL,
+      name VARCHAR(255),
+      role VARCHAR(50) DEFAULT 'admin',
+      is_active TINYINT(1) DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (client_id) REFERENCES clients(id)
+    )
+  `);
+
   // Indexes
   await conn.execute('CREATE INDEX IF NOT EXISTS idx_licenses_key ON licenses(license_key)');
   await conn.execute('CREATE INDEX IF NOT EXISTS idx_licenses_client ON licenses(client_id)');

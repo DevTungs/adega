@@ -93,4 +93,6 @@ export interface User {
   username: string;
   name: string | null;
   role: string;
+  client_id?: string | null;
+  client_name?: string | null;
 }

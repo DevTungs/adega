@@ -4,6 +4,7 @@ import {
   Users,
   CreditCard,
   Key,
+  UserCog,
   LogOut,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
@@ -13,6 +14,7 @@ const navItems = [
   { to: '/clients', icon: Users, label: 'Clientes' },
   { to: '/plans', icon: CreditCard, label: 'Planos' },
   { to: '/licenses', icon: Key, label: 'Licenças' },
+  { to: '/client-users', icon: UserCog, label: 'Usuarios' },
 ];
 
 export default function Sidebar() {
