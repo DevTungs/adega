@@ -25,7 +25,9 @@ if (!process.env.GH_TOKEN) {
   process.exit(1);
 }
 
+console.log('[publish] Building installer and publishing to GitHub...');
 execSync('electron-builder --win --publish always', {
   stdio: 'inherit',
   env: process.env,
 });
+console.log('[publish] Done!');

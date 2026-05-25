@@ -53,7 +53,27 @@
       "Bash(gh auth:*)",
       "Bash(where gh:*)",
       "Bash(gh repo:*)",
-      "Bash(GH_TOKEN=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 NODE_OPTIONS=\"--max-old-space-size=4096\" npm run publish)"
+      "Bash(GH_TOKEN=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 NODE_OPTIONS=\"--max-old-space-size=4096\" npm run publish)",
+      "Bash(gh release:*)",
+      "Bash(ls *.md *.txt LICENSE* CHANGELOG*)",
+      "Bash(du -sh */)",
+      "Bash(gh api:*)",
+      "Bash(grep -rl \"\"sharp\"\" */package.json)",
+      "Bash(grep -rn sharp --include=*.ts)",
+      "Bash(grep -rn qrcode-terminal --include=*.ts)",
+      "Bash(grep -r \"require.*sharp\\\\|import.*sharp\" ../../backend/dist/ --include=*.js)",
+      "Bash(rm -rf \"E:/adega/build-resources/backend/node_modules\")",
+      "Bash(rm -f \"E:/adega/build-resources/backend/package-lock.json\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''''dependencies'''',{}\\), indent=2\\)\\)\")",
+      "Bash(grep \"\"@whiskeysockets */package.json)",
+      "Bash(while read:*)",
+      "Bash(do du:*)",
+      "Bash(done)",
+      "Bash(powershell -Command \"\\(Get-ChildItem ''E:\\\\adega\\\\build-resources\\\\backend\\\\node_modules'' -Recurse | Measure-Object -Property Length -Sum\\).Sum / 1MB\")",
+      "Bash(cd:*)",
+      "Bash(find dist:*)",
+      "Bash(node scripts/prune-backend.js)",
+      "Bash(ls -lh E:/adega/release/*.exe)"
     ]
   }
 }

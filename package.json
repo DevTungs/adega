@@ -10,10 +10,10 @@
     "setup": "setup.bat",
     "electron:dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:start": "electron .",
-    "build:backend": "cd backend && npm run build",
+    "build:backend": "cd backend && npm run build && find dist -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.js.map' | xargs rm -f",
     "build:frontend": "cd frontend && npm run build",
-    "build:all": "npm run build:backend && npm run build:frontend && electron-builder --win --publish never",
-    "publish": "npm run build:backend && npm run build:frontend && node scripts/publish.js"
+    "build:all": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && electron-builder --win --publish never",
+    "publish": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && node scripts/publish.js"
   },
   "dependencies": {
     "dotenv": "^16.4.0",
@@ -34,14 +34,18 @@
     "files": [
       "electron/**/*"
     ],
+    "compression": "store",
+    "asar": true,
     "extraResources": [
       {
         "from": "frontend/dist",
-        "to": "frontend"
+        "to": "frontend",
+        "filter": ["**/*", "!**/*.map"]
       },
       {
         "from": "backend/dist",
-        "to": "backend"
+        "to": "backend",
+        "filter": ["**/*.js", "!**/*.map", "!**/*.d.ts", "!**/*.d.ts.map"]
       },
       {
         "from": "build-resources/backend/node_modules",
@@ -73,11 +77,11 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Painel Delivery"
     },
-    "asar": true,
     "publish": [{
       "provider": "github",
       "owner": "Kevick",
-      "repo": "painel-delivery-releases"
+      "repo": "painel-delivery-releases",
+      "releaseType": "release"
     }]
   }
 }
