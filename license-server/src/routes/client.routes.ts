@@ -16,7 +16,7 @@ const clientSchema = z.object({
 
 // List all clients
 router.get('/', authMiddleware, async (_req: AuthRequest, res: Response) => {
-  const clients = await query('SELECT * FROM clients ORDER BY created_at DESC');
+  const clients = await query('SELECT * FROM clients WHERE is_active = 1 ORDER BY created_at DESC');
   res.json({ success: true, data: clients });
 });
 

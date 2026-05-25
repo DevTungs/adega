@@ -13,7 +13,6 @@ export class LicenseService {
     );
 
     if (!license) {
-      await this.logActivation(null, machineFingerprint, 'validate', 'failed', 'Licença não encontrada');
       return { status: 'invalid' as const, message: 'Licença não encontrada' };
     }
 
