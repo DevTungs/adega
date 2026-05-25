@@ -9,3 +9,4 @@ data/sessions/
 *.log
 .DS_Store
 Thumbs.db
+.claude
