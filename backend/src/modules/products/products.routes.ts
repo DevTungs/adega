@@ -45,6 +45,15 @@ export async function registerProductRoutes(app: FastifyInstance) {
     },
   });
 
+  // Search by barcode (must be before :id route)
+  app.get('/api/products/barcode/:barcode', {
+    handler: async (request, reply) => {
+      const { barcode } = request.params as { barcode: string };
+      const result = await productsService.findByBarcode(barcode);
+      reply.send(result);
+    },
+  });
+
   // Get by ID
   app.get('/api/products/:id', {
     handler: async (request, reply) => {

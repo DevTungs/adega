@@ -73,6 +73,33 @@ export class ProductsService {
     return productsModel.findByAlias(query);
   }
 
+  async findByBarcode(barcode: string) {
+    const localProduct = productsModel.findByBarcode(barcode);
+    if (localProduct) {
+      return { found: true, source: 'local' as const, product: localProduct };
+    }
+
+    const { lookupBarcode } = await import('./open-food-facts');
+    const offResult = await lookupBarcode(barcode);
+
+    if (offResult.found) {
+      return {
+        found: true,
+        source: 'api' as const,
+        product: {
+          barcode,
+          name: offResult.product_name || '',
+          brand: offResult.brands || '',
+          volume: offResult.quantity || '',
+          image_url: offResult.image_url || '',
+          description: offResult.categories || '',
+        },
+      };
+    }
+
+    return { found: false };
+  }
+
   private groupCatalog(rows: any[]) {
     const groups: Record<string, any> = {};
     for (const row of rows) {

@@ -21,6 +21,9 @@ export const productsApi = {
 
   updateStock: (id: string, quantity: number) =>
     api.patch(`/products/${id}/stock`, { quantity }),
+
+  searchByBarcode: (barcode: string) =>
+    api.get(`/products/barcode/${barcode}`).then(res => res.data),
 };
 
 export const categoriesApi = {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Search } from 'lucide-react';
 import { Product, Category } from '../../types';
+import { productsApi } from '../../api/products';
 
 interface Props {
   product?: Product | null;
@@ -27,6 +28,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
     is_featured: false,
   });
   const [saving, setSaving] = useState(false);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     if (product) {
@@ -43,11 +45,36 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
         brand: product.brand || '',
         description: product.description || '',
         image_url: product.image_url || '',
-        barcode: '',
+        barcode: product.barcode || '',
         is_featured: product.is_featured === 1,
       });
     }
   }, [product]);
+
+  const handleBarcodeSearch = async () => {
+    if (!form.barcode.trim()) return;
+    setSearching(true);
+    try {
+      const result = await productsApi.searchByBarcode(form.barcode.trim());
+      if (result.found && result.source === 'api') {
+        const p = result.product;
+        setForm(prev => ({
+          ...prev,
+          name: p.name || prev.name,
+          brand: p.brand || prev.brand,
+          volume: p.volume || prev.volume,
+          image_url: p.image_url || prev.image_url,
+          description: p.description || prev.description,
+        }));
+      } else if (!result.found) {
+        alert('Produto nao encontrado. Preencha os dados manualmente.');
+      }
+    } catch {
+      alert('Erro ao buscar codigo de barras.');
+    } finally {
+      setSearching(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,6 +116,29 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Codigo de Barras</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.barcode}
+                onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeSearch(); } }}
+                placeholder="Digite ou escaneie o codigo"
+                className="input flex-1"
+              />
+              <button
+                type="button"
+                onClick={handleBarcodeSearch}
+                disabled={searching || !form.barcode.trim()}
+                className="btn-secondary flex items-center gap-1"
+              >
+                <Search size={16} />
+                {searching ? 'Buscando...' : 'Buscar'}
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
             <input

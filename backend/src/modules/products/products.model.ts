@@ -33,6 +33,10 @@ export class ProductsModel {
     return qb.selectOne('products', '*', 'slug = ?', [slug]) as Product | undefined;
   }
 
+  findByBarcode(barcode: string): Product | undefined {
+    return qb.selectOne('products', '*', 'barcode = ? AND is_active = 1', [barcode]) as Product | undefined;
+  }
+
   findByAlias(alias: string): Product | undefined {
     const db = getDb();
     const row = db.get(
