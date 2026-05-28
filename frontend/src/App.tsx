@@ -13,6 +13,7 @@ import Settings from './pages/Settings';
 import WhatsApp from './pages/WhatsApp';
 import Messages from './pages/Messages';
 import License from './pages/License';
+import PDV from './pages/PDV';
 import Reports from './pages/Reports';
 import StockMovements from './pages/StockMovements';
 import Coupons from './pages/Coupons';
@@ -63,6 +64,7 @@ export default function App() {
         >
           <Route index element={<Dashboard />} />
           <Route path="orders" element={<Orders />} />
+          <Route path="pdv" element={<PDV />} />
           <Route path="products" element={<Products />} />
           <Route path="categories" element={<Categories />} />
           <Route path="customers" element={<Customers />} />

@@ -3,6 +3,7 @@ import { customersModel } from '../customers/customers.model';
 import { productsModel } from '../products/products.model';
 import { stockModel } from '../stock/stock.model';
 import { couponsModel } from '../coupons/coupons.model';
+import { cashRegisterService } from '../cash-register/cash-register.service';
 import { AppError } from '../../shared/errors/app-error';
 import { Order, OrderStatus } from '../../shared/types';
 import { logger } from '../../shared/middlewares/logger';
@@ -123,6 +124,11 @@ export class OrdersService {
 
     logger.info({ orderId: order.id, orderNumber: order.order_number, stockWarnings: stockWarnings.length }, 'Order created');
 
+    // Register cash movement if cash register is open
+    if (data.payment_method) {
+      try { await cashRegisterService.addSaleMovement(order.id, order.total, data.payment_method); } catch { /* Cash register not critical */ }
+    }
+
     // Emit WebSocket event
     try { emitOrderNew(order); } catch { /* WS not critical */ }
 
@@ -199,6 +205,11 @@ export class OrdersService {
         created_by: changedBy,
       });
       await this.checkAndEmitLowStock(item.product_id);
+    }
+
+    // Register cash reversal if cash register is open
+    if (order.payment_method) {
+      try { await cashRegisterService.addReversalMovement(order.id, order.total, order.payment_method); } catch { /* Cash register not critical */ }
     }
 
     return this.updateStatus(id, 'cancelled', changedBy, reason);

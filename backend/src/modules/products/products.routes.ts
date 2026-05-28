@@ -89,7 +89,8 @@ export async function registerProductRoutes(app: FastifyInstance) {
     handler: async (request, reply) => {
       const { id } = request.params as { id: string };
       const { quantity } = request.body as z.infer<typeof stockSchema>;
-      await productsService.updateStock(id, quantity);
+      const user = (request as any).user;
+      await productsService.updateStock(id, quantity, user?.name || user?.username || 'admin');
       reply.send({ success: true, message: 'Estoque atualizado' });
     },
   });

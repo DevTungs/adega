@@ -16,11 +16,13 @@ import {
   Percent,
   Truck,
   Bike,
+  Monitor,
 } from 'lucide-react';
 import api from '../../api/client';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/pdv', icon: Monitor, label: 'PDV' },
   { to: '/orders', icon: ShoppingBag, label: 'Pedidos' },
   { to: '/products', icon: Package, label: 'Produtos' },
   { to: '/categories', icon: FolderOpen, label: 'Categorias' },

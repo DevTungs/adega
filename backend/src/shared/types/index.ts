@@ -233,6 +233,22 @@ export interface AIResponse {
   suggestions?: string[];
 }
 
+export type StockMovementType = 'entry' | 'sale' | 'cancellation' | 'adjustment' | 'loss';
+
+export interface StockMovement {
+  id: string;
+  product_id: string;
+  type: StockMovementType;
+  quantity: number;
+  previous_stock: number;
+  new_stock: number;
+  reference_type: string | null;
+  reference_id: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface Catalog {
   categories: (Category & { products: Product[] })[];
   promotions: Promotion[];
