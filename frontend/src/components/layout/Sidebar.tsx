@@ -12,6 +12,10 @@ import {
   Shield,
   BarChart3,
   Warehouse,
+  Tag,
+  Percent,
+  Truck,
+  Bike,
 } from 'lucide-react';
 import api from '../../api/client';
 
@@ -23,6 +27,10 @@ const navItems = [
   { to: '/customers', icon: Users, label: 'Clientes' },
   { to: '/reports', icon: BarChart3, label: 'Relatórios' },
   { to: '/stock', icon: Warehouse, label: 'Estoque' },
+  { to: '/coupons', icon: Tag, label: 'Cupons' },
+  { to: '/promotions', icon: Percent, label: 'Promoções' },
+  { to: '/suppliers', icon: Truck, label: 'Fornecedores' },
+  { to: '/drivers', icon: Bike, label: 'Motoristas' },
   { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp' },
   { to: '/messages', icon: MessageSquare, label: 'Mensagens' },
   { to: '/settings', icon: Settings, label: 'Configurações' },

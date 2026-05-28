@@ -17,6 +17,7 @@ const createOrderSchema = z.object({
   delivery_address: z.string().optional(),
   delivery_notes: z.string().optional(),
   notes: z.string().optional(),
+  coupon_code: z.string().optional(),
 });
 
 const updateStatusSchema = z.object({

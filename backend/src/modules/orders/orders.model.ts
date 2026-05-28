@@ -98,6 +98,7 @@ export class OrdersModel {
     discount?: number;
     delivery_fee?: number;
     total: number;
+    coupon_id?: string;
     whatsapp_message_id?: string;
     metadata?: string;
   }): Order {
@@ -120,7 +121,7 @@ export class OrdersModel {
       delivery_notes: data.delivery_notes || null,
       estimated_time: null,
       assigned_driver: null,
-      coupon_id: null,
+      coupon_id: data.coupon_id || null,
       whatsapp_message_id: data.whatsapp_message_id || null,
       notes: data.notes || null,
       cancel_reason: null,

@@ -144,6 +144,7 @@ export async function buildApp() {
   const { registerPromotionRoutes } = await import('./modules/promotions/promotions.routes');
   const { registerSupplierRoutes } = await import('./modules/suppliers/suppliers.routes');
   const { registerDriverRoutes } = await import('./modules/drivers/drivers.routes');
+  const { registerCashRegisterRoutes } = await import('./modules/cash-register/cash-register.routes');
 
   await registerAuthRoutes(app);
   await registerCategoryRoutes(app);
@@ -159,6 +160,7 @@ export async function buildApp() {
   await registerPromotionRoutes(app);
   await registerSupplierRoutes(app);
   await registerDriverRoutes(app);
+  await registerCashRegisterRoutes(app);
 
   // WebSocket
   setupWebSocket(app);

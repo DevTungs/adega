@@ -76,6 +76,7 @@ export interface DeliveryDriver {
   name: string;
   phone: string;
   vehicle: string | null;
+  plate: string | null;
   is_active: number;
   is_available: number;
   total_deliveries: number;
@@ -95,4 +96,56 @@ export interface User {
   role: string;
   client_id?: string | null;
   client_name?: string | null;
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  description: string | null;
+  type: string;
+  value: number;
+  min_order_value: number | null;
+  max_discount: number | null;
+  max_uses: number | null;
+  current_uses: number;
+  per_customer: number;
+  start_date: string;
+  end_date: string;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Promotion {
+  id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  value: number | null;
+  min_order_value: number | null;
+  min_quantity: number | null;
+  applicable_products: string;
+  applicable_categories: string;
+  buy_quantity: number | null;
+  get_quantity: number | null;
+  start_date: string;
+  end_date: string;
+  is_active: number;
+  max_uses: number | null;
+  current_uses: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  cnpj: string | null;
+  address: string | null;
+  notes: string | null;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
 }
