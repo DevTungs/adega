@@ -1,7 +1,9 @@
 import { productsModel } from './products.model';
+import { stockModel } from '../stock/stock.model';
 import { AppError } from '../../shared/errors/app-error';
 import { Product } from '../../shared/types';
 import { cacheService } from '../../services/cache/cache.service';
+import { emitStockLow } from '../../services/websocket/ws.server';
 
 export class ProductsService {
   async getAll(filters?: { category_id?: string; is_active?: boolean; search?: string }) {
@@ -36,9 +38,25 @@ export class ProductsService {
     cacheService.invalidateCatalog();
   }
 
-  async updateStock(id: string, quantity: number) {
-    await this.getById(id);
+  async updateStock(id: string, quantity: number, created_by?: string) {
+    const product = await this.getById(id);
+    const previousStock = product.stock;
     await productsModel.updateStock(id, quantity);
+    stockModel.createMovement({
+      product_id: id,
+      type: 'adjustment',
+      quantity,
+      previous_stock: previousStock,
+      new_stock: previousStock + quantity,
+      reference_type: 'manual',
+      created_by: created_by || 'admin',
+    });
+    const updated = await productsModel.findById(id);
+    if (updated && updated.stock <= updated.min_stock) {
+      try {
+        emitStockLow({ id: updated.id, name: updated.name, stock: updated.stock, min_stock: updated.min_stock });
+      } catch { /* WS not critical */ }
+    }
   }
 
   async getCatalog() {

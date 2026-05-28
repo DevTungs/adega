@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useOrderStore } from '../stores/orderStore';
 import { ordersApi } from '../api/orders';
 import StatsCards from '../components/dashboard/StatsCards';
 import { DashboardStats } from '../types';
 import { formatCurrency, formatDateTime, STATUS_LABELS, STATUS_COLORS } from '../utils/format';
+import { BarChart3 } from 'lucide-react';
 
 export default function Dashboard() {
   const { orders, fetchOrders } = useOrderStore();
@@ -18,7 +20,13 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <Link to="/reports" className="flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium text-sm">
+          <BarChart3 size={18} />
+          Ver Relatórios
+        </Link>
+      </div>
 
       <StatsCards stats={stats} />
 

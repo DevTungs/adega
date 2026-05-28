@@ -10,6 +10,8 @@ import {
   MessageSquare,
   Settings,
   Shield,
+  BarChart3,
+  Warehouse,
 } from 'lucide-react';
 import api from '../../api/client';
 
@@ -19,6 +21,8 @@ const navItems = [
   { to: '/products', icon: Package, label: 'Produtos' },
   { to: '/categories', icon: FolderOpen, label: 'Categorias' },
   { to: '/customers', icon: Users, label: 'Clientes' },
+  { to: '/reports', icon: BarChart3, label: 'Relatórios' },
+  { to: '/stock', icon: Warehouse, label: 'Estoque' },
   { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp' },
   { to: '/messages', icon: MessageSquare, label: 'Mensagens' },
   { to: '/settings', icon: Settings, label: 'Configurações' },

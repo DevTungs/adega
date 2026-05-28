@@ -1,10 +1,12 @@
 import { ordersModel } from './orders.model';
 import { customersModel } from '../customers/customers.model';
 import { productsModel } from '../products/products.model';
+import { stockModel } from '../stock/stock.model';
+import { couponsModel } from '../coupons/coupons.model';
 import { AppError } from '../../shared/errors/app-error';
 import { Order, OrderStatus } from '../../shared/types';
 import { logger } from '../../shared/middlewares/logger';
-import { emitOrderNew, emitOrderStatusChanged, emitOrderUpdated } from '../../services/websocket/ws.server';
+import { emitOrderNew, emitOrderStatusChanged, emitOrderUpdated, emitStockLow } from '../../services/websocket/ws.server';
 import { printerService } from '../../services/printer/printer.service';
 import { baileysService } from '../../services/whatsapp/baileys.service';
 
@@ -30,6 +32,7 @@ export class OrdersService {
     delivery_address?: string;
     delivery_notes?: string;
     notes?: string;
+    coupon_code?: string;
     whatsapp_message_id?: string;
   }) {
     // Validate products and calculate totals
@@ -58,20 +61,64 @@ export class OrdersService {
 
     const metadata = stockWarnings.length > 0 ? JSON.stringify({ stockWarnings }) : undefined;
 
+    // Apply coupon if provided
+    let discount = 0;
+    let couponId: string | undefined;
+    if (data.coupon_code) {
+      const coupon = couponsModel.findByCode(data.coupon_code);
+      if (!coupon) throw AppError.badRequest('Cupom inválido ou inativo');
+      const now = new Date().toISOString();
+      if (now < coupon.start_date || now > coupon.end_date) throw AppError.badRequest('Cupom expirado ou ainda não válido');
+      if (coupon.max_uses && coupon.current_uses >= coupon.max_uses) throw AppError.badRequest('Cupom atingiu o limite de uso');
+      if (coupon.min_order_value && subtotal < coupon.min_order_value) {
+        throw AppError.badRequest(`Valor mínimo do pedido: R$ ${coupon.min_order_value.toFixed(2)}`);
+      }
+      if (coupon.type === 'percentage') {
+        discount = subtotal * (coupon.value / 100);
+        if (coupon.max_discount && discount > coupon.max_discount) discount = coupon.max_discount;
+      } else if (coupon.type === 'fixed') {
+        discount = coupon.value;
+      }
+      discount = Math.round(discount * 100) / 100;
+      couponId = coupon.id;
+    }
+
+    const total = Math.max(0, subtotal - discount);
+
     const order = await ordersModel.create({
       ...data,
       items,
       subtotal,
-      total: subtotal,
+      discount,
+      total,
+      coupon_id: couponId,
       metadata,
     });
+
+    // Increment coupon usage
+    if (couponId) {
+      couponsModel.incrementUsage(couponId);
+    }
 
     // Update customer stats
     await customersModel.updateOrderStats(data.customer_id, order.total);
 
     // Update stock
     for (const item of items) {
+      const product = await productsModel.findById(item.product_id);
+      const previousStock = product?.stock || 0;
       await productsModel.updateStock(item.product_id, -item.quantity);
+      stockModel.createMovement({
+        product_id: item.product_id,
+        type: 'sale',
+        quantity: -item.quantity,
+        previous_stock: previousStock,
+        new_stock: previousStock - item.quantity,
+        reference_type: 'order',
+        reference_id: order.id,
+        created_by: 'system',
+      });
+      await this.checkAndEmitLowStock(item.product_id);
     }
 
     logger.info({ orderId: order.id, orderNumber: order.order_number, stockWarnings: stockWarnings.length }, 'Order created');
@@ -129,6 +176,31 @@ export class OrdersService {
   }
 
   async cancel(id: string, reason: string, changedBy: string = 'admin') {
+    const order = await this.getById(id);
+
+    // Prevent double stock restoration
+    if (order.status === 'cancelled') {
+      throw AppError.badRequest('Pedido já está cancelado');
+    }
+
+    // Restore stock for each item before cancelling
+    for (const item of order.items) {
+      const product = await productsModel.findById(item.product_id);
+      const previousStock = product?.stock || 0;
+      await productsModel.updateStock(item.product_id, item.quantity);
+      stockModel.createMovement({
+        product_id: item.product_id,
+        type: 'cancellation',
+        quantity: item.quantity,
+        previous_stock: previousStock,
+        new_stock: previousStock + item.quantity,
+        reference_type: 'order',
+        reference_id: order.id,
+        created_by: changedBy,
+      });
+      await this.checkAndEmitLowStock(item.product_id);
+    }
+
     return this.updateStatus(id, 'cancelled', changedBy, reason);
   }
 
@@ -143,6 +215,15 @@ export class OrdersService {
 
   async getActiveByCustomer(customerId: string) {
     return ordersModel.getActiveOrdersByCustomer(customerId);
+  }
+
+  private async checkAndEmitLowStock(productId: string) {
+    const product = await productsModel.findById(productId);
+    if (product && product.stock <= product.min_stock) {
+      try {
+        emitStockLow({ id: product.id, name: product.name, stock: product.stock, min_stock: product.min_stock });
+      } catch { /* WS not critical */ }
+    }
   }
 
   private validateStatusTransition(current: OrderStatus, next: OrderStatus) {

@@ -50,6 +50,11 @@ export function emitSystemAlert(alert: any) {
   if (io) io.emit('system:alert', alert);
 }
 
+// Stock alerts
+export function emitStockLow(product: { id: string; name: string; stock: number; min_stock: number }) {
+  if (io) io.emit('stock:low', product);
+}
+
 // Agent request
 export function emitAgentRequest(phone: string, customerName: string) {
   if (io) io.emit('wa:agent_request', { phone, customerName, time: new Date().toISOString() });

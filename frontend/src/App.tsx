@@ -13,6 +13,12 @@ import Settings from './pages/Settings';
 import WhatsApp from './pages/WhatsApp';
 import Messages from './pages/Messages';
 import License from './pages/License';
+import Reports from './pages/Reports';
+import StockMovements from './pages/StockMovements';
+import Coupons from './pages/Coupons';
+import Promotions from './pages/Promotions';
+import Suppliers from './pages/Suppliers';
+import Drivers from './pages/Drivers';
 import UpdateToast from './components/UpdateToast';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -60,6 +66,12 @@ export default function App() {
           <Route path="products" element={<Products />} />
           <Route path="categories" element={<Categories />} />
           <Route path="customers" element={<Customers />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="stock" element={<StockMovements />} />
+          <Route path="coupons" element={<Coupons />} />
+          <Route path="promotions" element={<Promotions />} />
+          <Route path="suppliers" element={<Suppliers />} />
+          <Route path="drivers" element={<Drivers />} />
           <Route path="settings" element={<Settings />} />
           <Route path="whatsapp" element={<WhatsApp />} />
           <Route path="messages" element={<Messages />} />

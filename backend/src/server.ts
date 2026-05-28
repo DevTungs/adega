@@ -138,6 +138,12 @@ export async function buildApp() {
   const { registerWhatsAppRoutes } = await import('./modules/whatsapp/whatsapp.routes');
   const { registerSettingsRoutes } = await import('./modules/settings/settings.routes');
   const { registerLicenseRoutes } = await import('./modules/license/license.routes');
+  const { registerReportRoutes } = await import('./modules/reports/reports.routes');
+  const { registerStockRoutes } = await import('./modules/stock/stock.routes');
+  const { registerCouponRoutes } = await import('./modules/coupons/coupons.routes');
+  const { registerPromotionRoutes } = await import('./modules/promotions/promotions.routes');
+  const { registerSupplierRoutes } = await import('./modules/suppliers/suppliers.routes');
+  const { registerDriverRoutes } = await import('./modules/drivers/drivers.routes');
 
   await registerAuthRoutes(app);
   await registerCategoryRoutes(app);
@@ -147,6 +153,12 @@ export async function buildApp() {
   await registerWhatsAppRoutes(app);
   await registerSettingsRoutes(app);
   await registerLicenseRoutes(app);
+  await registerReportRoutes(app);
+  await registerStockRoutes(app);
+  await registerCouponRoutes(app);
+  await registerPromotionRoutes(app);
+  await registerSupplierRoutes(app);
+  await registerDriverRoutes(app);
 
   // WebSocket
   setupWebSocket(app);
