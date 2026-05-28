@@ -17,17 +17,6 @@ export class MessageFormatter {
     return msg;
   }
 
-  promotions(promotions: any[]): string {
-    if (!promotions.length) return '🏷️ Nenhuma promoção ativa no momento.';
-    let msg = '🏷️ *Promoções Ativas*\n\n';
-    for (const promo of promotions) {
-      msg += `• *${promo.name}*\n`;
-      if (promo.description) msg += `  ${promo.description}\n`;
-      msg += `  Válido até ${new Date(promo.end_date).toLocaleDateString('pt-BR')}\n\n`;
-    }
-    msg += 'Aproveite!';
-    return msg;
-  }
 
   orderConfirmation(items: Array<{ name: string; quantity: number; price: number; total: number }>, subtotal: number): string {
     let msg = '📋 *Resumo do Pedido*\n\n';

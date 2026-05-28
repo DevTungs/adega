@@ -121,9 +121,6 @@ export class WhatsAppHandler {
       return 'Estamos conectando você com um atendente. Aguarde um momento! 🙏';
     }
 
-    if (['promoções', 'promocoes', 'promos', 'ofertas'].includes(message)) {
-      return messageFormatter.promotions([]);
-    }
 
     if (['ajuda', 'help'].includes(message)) {
       return 'Como posso ajudar? Digite:\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente';
@@ -166,8 +163,6 @@ export class WhatsAppHandler {
           const catalog = await productsService.getCatalog();
           return messageFormatter.catalog(catalog);
 
-        case 'promocao':
-          return messageFormatter.promotions([]);
 
         case 'ajuda':
           return messageFormatter.help();

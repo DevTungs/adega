@@ -39,18 +39,6 @@ export class CacheService {
     this.delete('catalog');
   }
 
-  // Promotions specific
-  getPromotions() {
-    return this.get<any[]>('promotions');
-  }
-
-  setPromotions(promotions: any[]) {
-    this.set('promotions', promotions, 300);
-  }
-
-  invalidatePromotions() {
-    this.delete('promotions');
-  }
 }
 
 export const cacheService = new CacheService();

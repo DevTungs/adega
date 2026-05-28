@@ -16,8 +16,6 @@ import License from './pages/License';
 import PDV from './pages/PDV';
 import Reports from './pages/Reports';
 import StockMovements from './pages/StockMovements';
-import Coupons from './pages/Coupons';
-import Promotions from './pages/Promotions';
 import Suppliers from './pages/Suppliers';
 import Drivers from './pages/Drivers';
 import UpdateToast from './components/UpdateToast';
@@ -70,8 +68,6 @@ export default function App() {
           <Route path="customers" element={<Customers />} />
           <Route path="reports" element={<Reports />} />
           <Route path="stock" element={<StockMovements />} />
-          <Route path="coupons" element={<Coupons />} />
-          <Route path="promotions" element={<Promotions />} />
           <Route path="suppliers" element={<Suppliers />} />
           <Route path="drivers" element={<Drivers />} />
           <Route path="settings" element={<Settings />} />

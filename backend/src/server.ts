@@ -140,8 +140,6 @@ export async function buildApp() {
   const { registerLicenseRoutes } = await import('./modules/license/license.routes');
   const { registerReportRoutes } = await import('./modules/reports/reports.routes');
   const { registerStockRoutes } = await import('./modules/stock/stock.routes');
-  const { registerCouponRoutes } = await import('./modules/coupons/coupons.routes');
-  const { registerPromotionRoutes } = await import('./modules/promotions/promotions.routes');
   const { registerSupplierRoutes } = await import('./modules/suppliers/suppliers.routes');
   const { registerDriverRoutes } = await import('./modules/drivers/drivers.routes');
   const { registerCashRegisterRoutes } = await import('./modules/cash-register/cash-register.routes');
@@ -156,8 +154,6 @@ export async function buildApp() {
   await registerLicenseRoutes(app);
   await registerReportRoutes(app);
   await registerStockRoutes(app);
-  await registerCouponRoutes(app);
-  await registerPromotionRoutes(app);
   await registerSupplierRoutes(app);
   await registerDriverRoutes(app);
   await registerCashRegisterRoutes(app);
