@@ -33,11 +33,15 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [licenseServerDown, setLicenseServerDown] = useState(false);
+  const [licenseServerDismissed, setLicenseServerDismissed] = useState(false);
 
-  const checkLicenseServer = useCallback(async () => {
+  const checkLicenseServer = useCallback(async (force = false) => {
     try {
-      const { data } = await api.get('/system/license-health');
-      setLicenseServerDown(!data.reachable);
+      const url = force ? '/system/license-health?force=true' : '/system/license-health';
+      const { data } = await api.get(url);
+      const down = !data.reachable;
+      setLicenseServerDown(down);
+      if (!down) setLicenseServerDismissed(false); // reset dismiss when server recovers
     } catch {
       setLicenseServerDown(true);
     }
@@ -85,8 +89,8 @@ export default function App() {
 
   return (
     <>
-      {licenseServerDown && (
-        <LicenseServerDownModal onRetry={checkLicenseServer} />
+      {licenseServerDown && !licenseServerDismissed && (
+        <LicenseServerDownModal onRetry={() => checkLicenseServer(true)} onDismiss={() => { setLicenseServerDown(false); setLicenseServerDismissed(true); }} />
       )}
       <BrowserRouter>
         <Toaster position="top-right" />
