@@ -111,7 +111,7 @@ function percentChange(current: number, previous: number): number {
 }
 
 function ChangeIndicator({ value }: { value: number }) {
-  if (value === 0) return <span className="flex items-center gap-1 text-gray-500 text-sm"><Minus size={14} /> 0%</span>;
+  if (value === 0) return <span className="flex items-center gap-1 text-gray-400 text-sm"><Minus size={14} /> 0%</span>;
   if (value > 0) return <span className="flex items-center gap-1 text-green-600 text-sm"><TrendingUp size={14} /> +{value.toFixed(1)}%</span>;
   return <span className="flex items-center gap-1 text-red-600 text-sm"><TrendingDown size={14} /> {value.toFixed(1)}%</span>;
 }
@@ -119,17 +119,17 @@ function ChangeIndicator({ value }: { value: number }) {
 function BarChart({ data, maxVal, label }: { data: { label: string; value: number; color?: string }[]; maxVal: number; label: string }) {
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium text-gray-500">{label}</p>
+      <p className="text-sm font-medium text-gray-400">{label}</p>
       {data.map((item, i) => (
         <div key={i} className="flex items-center gap-3">
-          <span className="w-20 text-sm text-gray-600 text-right shrink-0">{item.label}</span>
-          <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+          <span className="w-20 text-sm text-gray-400 text-right shrink-0">{item.label}</span>
+          <div className="flex-1 bg-gray-800 rounded-full h-6 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${item.color || 'bg-primary-500'}`}
               style={{ width: `${maxVal > 0 ? (item.value / maxVal) * 100 : 0}%` }}
             />
           </div>
-          <span className="w-20 text-sm font-medium text-gray-900">{typeof item.value === 'number' && item.value > 100 ? formatCurrency(item.value) : item.value}</span>
+          <span className="w-20 text-sm font-medium text-white">{typeof item.value === 'number' && item.value > 100 ? formatCurrency(item.value) : item.value}</span>
         </div>
       ))}
     </div>
@@ -248,19 +248,19 @@ export default function Reports() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Relatórios</h1>
+        <h1 className="text-2xl font-bold text-white">Relatórios</h1>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+      <div className="flex gap-1 bg-gray-800 p-1 rounded-lg w-fit">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === tab.key
-                ? 'bg-white text-primary-700 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'bg-gray-900 text-primary-700 shadow-sm'
+                : 'text-gray-400 hover:text-white'
             }`}
           >
             <tab.icon size={16} />
@@ -274,7 +274,7 @@ export default function Reports() {
         <div className="card">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">De:</label>
+              <label className="text-sm text-gray-400">De:</label>
               <input
                 type="date"
                 value={dateFrom}
@@ -283,7 +283,7 @@ export default function Reports() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Até:</label>
+              <label className="text-sm text-gray-400">Até:</label>
               <input
                 type="date"
                 value={dateTo}
@@ -299,7 +299,7 @@ export default function Reports() {
             </div>
             {activeTab === 'sales' && (
               <div className="flex items-center gap-2 ml-auto">
-                <label className="text-sm text-gray-600">Agrupar:</label>
+                <label className="text-sm text-gray-400">Agrupar:</label>
                 <select value={period} onChange={(e) => setPeriod(e.target.value)} className="input !w-auto">
                   <option value="day">Dia</option>
                   <option value="week">Semana</option>
@@ -324,21 +324,21 @@ export default function Reports() {
           {/* Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="card">
-              <p className="text-sm text-gray-500">Total de Pedidos</p>
-              <p className="text-2xl font-bold text-gray-900">{summary?.totalOrders || 0}</p>
+              <p className="text-sm text-gray-400">Total de Pedidos</p>
+              <p className="text-2xl font-bold text-white">{summary?.totalOrders || 0}</p>
               {comparison && <ChangeIndicator value={percentChange(comparison.current.orders, comparison.previous.orders)} />}
             </div>
             <div className="card">
-              <p className="text-sm text-gray-500">Receita Total</p>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary?.totalRevenue)}</p>
+              <p className="text-sm text-gray-400">Receita Total</p>
+              <p className="text-2xl font-bold text-white">{formatCurrency(summary?.totalRevenue)}</p>
               {comparison && <ChangeIndicator value={percentChange(comparison.current.revenue, comparison.previous.revenue)} />}
             </div>
             <div className="card">
-              <p className="text-sm text-gray-500">Ticket Médio</p>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary?.avgTicket)}</p>
+              <p className="text-sm text-gray-400">Ticket Médio</p>
+              <p className="text-2xl font-bold text-white">{formatCurrency(summary?.avgTicket)}</p>
             </div>
             <div className="card">
-              <p className="text-sm text-gray-500">Lucro</p>
+              <p className="text-sm text-gray-400">Lucro</p>
               <p className={`text-2xl font-bold ${profitValue >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {formatCurrency(profitValue)}
               </p>
@@ -357,7 +357,7 @@ export default function Reports() {
                   label={`${byPeriod.length} períodos`}
                 />
               ) : (
-                <p className="text-gray-500 text-center py-8">Sem dados no período</p>
+                <p className="text-gray-400 text-center py-8">Sem dados no período</p>
               )}
             </div>
 
@@ -375,7 +375,7 @@ export default function Reports() {
                   label={`${byPayment.reduce((s, p) => s + p.orders, 0)} pedidos`}
                 />
               ) : (
-                <p className="text-gray-500 text-center py-8">Sem dados</p>
+                <p className="text-gray-400 text-center py-8">Sem dados</p>
               )}
             </div>
           </div>
@@ -389,10 +389,10 @@ export default function Reports() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2 text-gray-500 font-medium">#</th>
-                        <th className="text-left py-2 text-gray-500 font-medium">Produto</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Qtd</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Receita</th>
+                        <th className="text-left py-2 text-gray-400 font-medium">#</th>
+                        <th className="text-left py-2 text-gray-400 font-medium">Produto</th>
+                        <th className="text-right py-2 text-gray-400 font-medium">Qtd</th>
+                        <th className="text-right py-2 text-gray-400 font-medium">Receita</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -408,7 +408,7 @@ export default function Reports() {
                   </table>
                 </div>
               ) : (
-                <p className="text-gray-500 text-center py-8">Sem dados</p>
+                <p className="text-gray-400 text-center py-8">Sem dados</p>
               )}
             </div>
 
@@ -422,7 +422,7 @@ export default function Reports() {
                   label={`${categories.length} categorias`}
                 />
               ) : (
-                <p className="text-gray-500 text-center py-8">Sem dados</p>
+                <p className="text-gray-400 text-center py-8">Sem dados</p>
               )}
             </div>
           </div>
@@ -435,15 +435,15 @@ export default function Reports() {
           {/* Valuation cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="card">
-              <p className="text-sm text-gray-500">Produtos Ativos</p>
-              <p className="text-2xl font-bold text-gray-900">{valuation?.totalProducts || 0}</p>
+              <p className="text-sm text-gray-400">Produtos Ativos</p>
+              <p className="text-2xl font-bold text-white">{valuation?.totalProducts || 0}</p>
             </div>
             <div className="card">
-              <p className="text-sm text-gray-500">Unidades em Estoque</p>
-              <p className="text-2xl font-bold text-gray-900">{valuation?.totalUnits || 0}</p>
+              <p className="text-sm text-gray-400">Unidades em Estoque</p>
+              <p className="text-2xl font-bold text-white">{valuation?.totalUnits || 0}</p>
             </div>
             <div className="card">
-              <p className="text-sm text-gray-500">Valor do Estoque</p>
+              <p className="text-sm text-gray-400">Valor do Estoque</p>
               <p className="text-2xl font-bold text-green-600">{formatCurrency(valuation?.totalValue)}</p>
             </div>
           </div>
@@ -457,17 +457,17 @@ export default function Reports() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2 text-gray-500 font-medium">Produto</th>
-                        <th className="text-left py-2 text-gray-500 font-medium">Categoria</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Estoque</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Mínimo</th>
+                        <th className="text-left py-2 text-gray-400 font-medium">Produto</th>
+                        <th className="text-left py-2 text-gray-400 font-medium">Categoria</th>
+                        <th className="text-right py-2 text-gray-400 font-medium">Estoque</th>
+                        <th className="text-right py-2 text-gray-400 font-medium">Mínimo</th>
                       </tr>
                     </thead>
                     <tbody>
                       {lowStock.map((p) => (
                         <tr key={p.id} className="border-b last:border-0">
                           <td className="py-2 font-medium">{p.name}</td>
-                          <td className="py-2 text-gray-500">{p.category_name || '-'}</td>
+                          <td className="py-2 text-gray-400">{p.category_name || '-'}</td>
                           <td className="py-2 text-right">
                             <span className={`font-bold ${p.stock === 0 ? 'text-red-600' : 'text-orange-500'}`}>
                               {p.stock} {p.unit}
@@ -492,10 +492,10 @@ export default function Reports() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2 text-gray-500 font-medium">Categoria</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Produtos</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Unidades</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Valor</th>
+                        <th className="text-left py-2 text-gray-400 font-medium">Categoria</th>
+                        <th className="text-right py-2 text-gray-400 font-medium">Produtos</th>
+                        <th className="text-right py-2 text-gray-400 font-medium">Unidades</th>
+                        <th className="text-right py-2 text-gray-400 font-medium">Valor</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -511,7 +511,7 @@ export default function Reports() {
                   </table>
                 </div>
               ) : (
-                <p className="text-gray-500 text-center py-8">Sem dados</p>
+                <p className="text-gray-400 text-center py-8">Sem dados</p>
               )}
             </div>
           </div>
@@ -528,12 +528,12 @@ export default function Reports() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left py-2 text-gray-500 font-medium">#</th>
-                      <th className="text-left py-2 text-gray-500 font-medium">Cliente</th>
-                      <th className="text-left py-2 text-gray-500 font-medium">Telefone</th>
-                      <th className="text-right py-2 text-gray-500 font-medium">Pedidos</th>
-                      <th className="text-right py-2 text-gray-500 font-medium">Total Gasto</th>
-                      <th className="text-right py-2 text-gray-500 font-medium">Último Pedido</th>
+                      <th className="text-left py-2 text-gray-400 font-medium">#</th>
+                      <th className="text-left py-2 text-gray-400 font-medium">Cliente</th>
+                      <th className="text-left py-2 text-gray-400 font-medium">Telefone</th>
+                      <th className="text-right py-2 text-gray-400 font-medium">Pedidos</th>
+                      <th className="text-right py-2 text-gray-400 font-medium">Total Gasto</th>
+                      <th className="text-right py-2 text-gray-400 font-medium">Último Pedido</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -541,7 +541,7 @@ export default function Reports() {
                       <tr key={c.id} className="border-b last:border-0">
                         <td className="py-2 text-gray-400">{i + 1}</td>
                         <td className="py-2 font-medium">{c.name || 'Sem nome'}</td>
-                        <td className="py-2 text-gray-500">{c.phone}</td>
+                        <td className="py-2 text-gray-400">{c.phone}</td>
                         <td className="py-2 text-right">{c.total_orders}</td>
                         <td className="py-2 text-right font-medium">{formatCurrency(c.total_spent)}</td>
                         <td className="py-2 text-right text-gray-400">{c.last_order_at ? formatDate(c.last_order_at) : '-'}</td>
@@ -551,7 +551,7 @@ export default function Reports() {
                 </table>
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">Nenhum cliente com pedidos</p>
+              <p className="text-gray-400 text-center py-8">Nenhum cliente com pedidos</p>
             )}
           </div>
         </div>
@@ -573,9 +573,9 @@ export default function Reports() {
 
                   return (
                     <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-xs text-gray-500">{orders > 0 ? orders : ''}</span>
+                      <span className="text-xs text-gray-400">{orders > 0 ? orders : ''}</span>
                       <div
-                        className={`w-full rounded-t transition-all duration-300 ${isPeak ? 'bg-primary-600' : orders > 0 ? 'bg-primary-300' : 'bg-gray-100'}`}
+                        className={`w-full rounded-t transition-all duration-300 ${isPeak ? 'bg-primary-600' : orders > 0 ? 'bg-primary-300' : 'bg-gray-800'}`}
                         style={{ height: `${Math.max(height, 2)}%` }}
                       />
                       <span className="text-xs text-gray-400">{String(i).padStart(2, '0')}</span>
@@ -584,12 +584,12 @@ export default function Reports() {
                 })}
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">Sem dados no período</p>
+              <p className="text-gray-400 text-center py-8">Sem dados no período</p>
             )}
             {hours.length > 0 && (
               <div className="mt-4 grid grid-cols-3 gap-4">
                 <div className="text-center">
-                  <p className="text-sm text-gray-500">Horário de Pico</p>
+                  <p className="text-sm text-gray-400">Horário de Pico</p>
                   <p className="text-lg font-bold text-primary-600">
                     {(() => {
                       const peak = hours.reduce((max, h) => h.orders > max.orders ? h : max, hours[0]);
@@ -598,11 +598,11 @@ export default function Reports() {
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-gray-500">Total de Pedidos</p>
+                  <p className="text-sm text-gray-400">Total de Pedidos</p>
                   <p className="text-lg font-bold">{hours.reduce((s, h) => s + h.orders, 0)}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-gray-500">Receita Total</p>
+                  <p className="text-sm text-gray-400">Receita Total</p>
                   <p className="text-lg font-bold">{formatCurrency(hours.reduce((s, h) => s + h.revenue, 0))}</p>
                 </div>
               </div>

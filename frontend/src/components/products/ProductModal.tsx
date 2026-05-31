@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Search } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { Product, Category } from '../../types';
 import { productsApi } from '../../api/products';
 
@@ -52,7 +53,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
   }, [product]);
 
   const handleBarcodeSearch = async () => {
-    if (!form.barcode.trim()) return;
+    if (!form.barcode.trim() || searching) return;
     setSearching(true);
     try {
       const result = await productsApi.searchByBarcode(form.barcode.trim());
@@ -67,10 +68,10 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
           description: p.description || prev.description,
         }));
       } else if (!result.found) {
-        alert('Produto nao encontrado. Preencha os dados manualmente.');
+        toast.error(result.error || 'Produto nao encontrado. Preencha os dados manualmente.');
       }
-    } catch {
-      alert('Erro ao buscar codigo de barras.');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Erro ao buscar codigo de barras.');
     } finally {
       setSearching(false);
     }
@@ -105,25 +106,25 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-gray-900 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold">
             {product ? 'Editar Produto' : 'Novo Produto'}
           </h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
+          <button onClick={onClose} className="p-1 hover:bg-gray-800 rounded">
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Codigo de Barras</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Codigo de Barras</label>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={form.barcode}
                 onChange={(e) => setForm({ ...form, barcode: e.target.value })}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeSearch(); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !searching) { e.preventDefault(); handleBarcodeSearch(); } }}
                 placeholder="Digite ou escaneie o codigo"
                 className="input flex-1"
               />
@@ -140,7 +141,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Nome *</label>
             <input
               type="text"
               value={form.name}
@@ -151,7 +152,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Categoria *</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Categoria *</label>
             <select
               value={form.category_id}
               onChange={(e) => setForm({ ...form, category_id: e.target.value })}
@@ -167,7 +168,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Preço *</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Preço *</label>
               <input
                 type="number"
                 step="0.01"
@@ -178,7 +179,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Promo</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Promo</label>
               <input
                 type="number"
                 step="0.01"
@@ -188,7 +189,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Custo</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Custo</label>
               <input
                 type="number"
                 step="0.01"
@@ -201,7 +202,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estoque</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Estoque</label>
               <input
                 type="number"
                 value={form.stock}
@@ -210,7 +211,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Unidade</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Unidade</label>
               <select
                 value={form.unit}
                 onChange={(e) => setForm({ ...form, unit: e.target.value })}
@@ -224,7 +225,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Volume</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Volume</label>
               <input
                 type="text"
                 placeholder="ex: 350ml"
@@ -237,7 +238,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Marca</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Marca</label>
               <input
                 type="text"
                 value={form.brand}
@@ -246,7 +247,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Imagem URL</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Imagem URL</label>
               <input
                 type="text"
                 value={form.image_url}
@@ -257,7 +258,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Descrição</label>
             <textarea
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -273,7 +274,7 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
               onChange={(e) => setForm({ ...form, is_featured: e.target.checked })}
               className="rounded"
             />
-            <span className="text-sm text-gray-700">Produto em destaque</span>
+            <span className="text-sm text-gray-300">Produto em destaque</span>
           </label>
 
           <div className="flex justify-end gap-3 pt-2 border-t">

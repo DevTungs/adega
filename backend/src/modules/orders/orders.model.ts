@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { Order, OrderItem, OrderStatus } from '../../shared/types';
 
 export class OrdersModel {
-  findAll(filters?: { status?: OrderStatus; customer_id?: string; date_from?: string; date_to?: string; limit?: number; offset?: number }): any[] {
+  findAll(filters?: { status?: OrderStatus; customer_id?: string; date_from?: string; date_to?: string; order_type?: string; limit?: number; offset?: number }): any[] {
     const db = getDb();
     const conditions: string[] = [];
     const params: any[] = [];
@@ -15,6 +15,10 @@ export class OrdersModel {
     if (filters?.customer_id) {
       conditions.push('o.customer_id = ?');
       params.push(filters.customer_id);
+    }
+    if (filters?.order_type) {
+      conditions.push('o.order_type = ?');
+      params.push(filters.order_type);
     }
     if (filters?.date_from) {
       conditions.push('o.created_at >= ?');
@@ -98,6 +102,7 @@ export class OrdersModel {
     discount?: number;
     delivery_fee?: number;
     total: number;
+    order_type?: string;
     whatsapp_message_id?: string;
     metadata?: string;
   }): Order {
@@ -111,6 +116,7 @@ export class OrdersModel {
       order_number: orderNumber,
       customer_id: data.customer_id,
       status: 'pending',
+      order_type: data.order_type || 'delivery',
       payment_method: data.payment_method || null,
       subtotal: data.subtotal,
       discount: data.discount || 0,

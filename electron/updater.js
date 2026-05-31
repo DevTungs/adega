@@ -1,17 +1,44 @@
 const { autoUpdater } = require('electron-updater');
-const { ipcMain } = require('electron');
+const { ipcMain, app } = require('electron');
+const path = require('path');
+const fs = require('fs');
 
-// Configure
+function withTimeout(promise, ms, label = 'operation') {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Timeout: ${label} (${ms}ms)`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// ── File logger for diagnostics ──────────────────────────────────────
+const LOG_DIR = path.join(app.getPath('userData'), 'logs');
+if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+
+const LOG_FILE = path.join(LOG_DIR, 'updater.log');
+
+function writeLog(level, msg) {
+  const ts = new Date().toISOString();
+  const line = `[${ts}] [${level}] ${msg}\n`;
+  try { fs.appendFileSync(LOG_FILE, line); } catch {}
+  if (level === 'ERROR') console.error('[Updater]', msg);
+  else console.log('[Updater]', msg);
+}
+
+// ── Configure autoUpdater ────────────────────────────────────────────
 autoUpdater.autoDownload = false;
-autoUpdater.autoInstallOnAppQuit = false;
+autoUpdater.autoInstallOnAppQuit = true; // Fallback: install on quit if startup update fails
 autoUpdater.disableSignatureVerification = true;
 autoUpdater.logger = {
-  info: (msg) => console.log('[Updater]', msg),
-  warn: (msg) => console.warn('[Updater]', msg),
-  error: (msg) => console.error('[Updater]', msg),
+  info: (msg) => writeLog('INFO', msg),
+  warn: (msg) => writeLog('WARN', msg),
+  error: (msg) => writeLog('ERROR', msg),
 };
 
 let mainWindow = null;
+let updateAborted = false;
 
 function sendToRenderer(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -21,39 +48,57 @@ function sendToRenderer(channel, data) {
 
 function updateLoadingText(text) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.executeJavaScript(
-      `document.querySelector('.status-text').textContent = ${JSON.stringify(text)};`
-    ).catch(() => {});
+    try {
+      mainWindow.webContents.executeJavaScript(
+        `document.querySelector('.status-text').textContent = ${JSON.stringify(text)};`
+      ).catch(() => {});
+    } catch {}
   }
 }
 
-/**
- * Check for updates BEFORE the app starts.
- * Returns: { available: false } or { available: true, version, downloaded: true/false }
- */
+// ── Retry wrapper ────────────────────────────────────────────────────
+async function withRetry(fn, { maxAttempts = 3, baseDelayMs = 2000, attemptTimeoutMs = 15000 } = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await withTimeout(fn(), attemptTimeoutMs, `attempt ${attempt}`);
+    } catch (err) {
+      lastErr = err;
+      writeLog('WARN', `Attempt ${attempt}/${maxAttempts} failed: ${err.message}`);
+      if (attempt < maxAttempts) {
+        const delay = baseDelayMs * Math.pow(2, attempt - 1); // 2s, 4s, 8s
+        writeLog('INFO', `Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// ── Core update check ────────────────────────────────────────────────
 async function checkAndUpdate() {
   return new Promise((resolve) => {
     let settled = false;
     const done = (result) => {
-      if (settled) return;
+      if (settled || updateAborted) return;
       settled = true;
-      // Remove listeners to avoid leaks
       autoUpdater.removeAllListeners();
+      writeLog('INFO', `Update check result: ${JSON.stringify(result)}`);
       resolve(result);
     };
 
     autoUpdater.on('error', (err) => {
-      console.error('[Updater] Error:', err.message);
+      writeLog('ERROR', `AutoUpdater error: ${err.message}`);
       done({ available: false, error: err.message });
     });
 
     autoUpdater.on('update-not-available', () => {
-      console.log('[Updater] No update available');
+      writeLog('INFO', 'No update available');
       done({ available: false });
     });
 
     autoUpdater.on('update-available', (info) => {
-      console.log('[Updater] Update available:', info.version);
+      writeLog('INFO', `Update available: ${info.version}`);
       updateLoadingText(`Atualização disponível: v${info.version}. Baixando...`);
       sendToRenderer('update-available', {
         version: info.version,
@@ -74,28 +119,28 @@ async function checkAndUpdate() {
     });
 
     autoUpdater.on('update-downloaded', (info) => {
-      console.log('[Updater] Update downloaded:', info.version);
+      writeLog('INFO', `Update downloaded: ${info.version}`);
       updateLoadingText('Atualização baixada. Reiniciando...');
-      sendToRenderer('update-downloaded', {
-        version: info.version,
-      });
+      sendToRenderer('update-downloaded', { version: info.version });
       done({ available: true, version: info.version, downloaded: true });
     });
 
-    // Start check
+    // Check with retry (each attempt has a 15s timeout)
     updateLoadingText('Verificando atualizações...');
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.error('[Updater] Check failed:', err.message);
-      done({ available: false, error: err.message });
-    });
+    withRetry(() => autoUpdater.checkForUpdates(), { maxAttempts: 3, baseDelayMs: 2000, attemptTimeoutMs: 15000 })
+      .catch((err) => {
+        writeLog('ERROR', `All update check attempts failed: ${err.message}`);
+        done({ available: false, error: err.message });
+      });
 
-    // Timeout: 30s max
+    // Hard timeout: 55s (3x15s attempts + 2s+4s backoff + buffer)
     setTimeout(() => {
-      done({ available: false, error: 'Timeout verificando atualizações' });
-    }, 30000);
+      done({ available: false, error: 'Timeout verificando atualizações (55s)' });
+    }, 55000);
   });
 }
 
+// ── IPC handlers ─────────────────────────────────────────────────────
 function setupUpdater(window) {
   mainWindow = window;
 
@@ -104,14 +149,21 @@ function setupUpdater(window) {
       const result = await autoUpdater.checkForUpdates();
       return { success: true, updateInfo: result?.updateInfo };
     } catch (err) {
-      console.error('[Updater] Manual check failed:', err.message);
+      writeLog('ERROR', `Manual check failed: ${err.message}`);
       return { success: false, error: err.message };
     }
   });
 
   ipcMain.handle('install-update', () => {
+    writeLog('INFO', 'Manual install triggered via IPC');
     autoUpdater.quitAndInstall(false, true);
   });
 }
 
-module.exports = { setupUpdater, checkAndUpdate };
+function abortUpdateCheck() {
+  updateAborted = true;
+  autoUpdater.removeAllListeners();
+  writeLog('INFO', 'Update check aborted externally');
+}
+
+module.exports = { setupUpdater, checkAndUpdate, abortUpdateCheck };

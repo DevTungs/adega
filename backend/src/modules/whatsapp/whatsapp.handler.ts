@@ -126,6 +126,11 @@ export class WhatsAppHandler {
       return 'Como posso ajudar? Digite:\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente';
     }
 
+    // Handle cancel when there's no active order
+    if (['cancelar', 'cancela', 'cancel'].includes(message)) {
+      return 'Você não tem um pedido ativo no momento. 🛒\n\nDigite o que deseja pedir!';
+    }
+
     // Interpret message using configured mode (AI or NLP)
     try {
       const response = BOT_MODE === 'nlp'
@@ -150,6 +155,29 @@ export class WhatsAppHandler {
               ],
             });
             return response.message;
+          }
+
+          // Fallback: try direct product name matching
+          const directMatch = await this.matchProductDirectly(message);
+          if (directMatch) {
+            const displayItems = [{
+              name: directMatch.name,
+              quantity: directMatch.quantity,
+              price: directMatch.price,
+              total: directMatch.price * directMatch.quantity,
+            }];
+            const subtotal = displayItems[0].total;
+            const summary = `📋 *Pedido:*\n\n• ${directMatch.quantity}x ${directMatch.name} - R$ ${subtotal.toFixed(2)}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*\n\n✅ Confirmar?\n❌ Remover item\n➕ Adicionar mais`;
+
+            await whatsappSessionService.updateState(phone, 'awaiting_items', {
+              items: [directMatch],
+              history: [
+                ...(JSON.parse(session.context || '{}').history || []).slice(-4),
+                { role: 'user', content: message },
+                { role: 'assistant', content: summary },
+              ],
+            });
+            return summary;
           }
 
           // No products but has message (disambiguation, category options, etc.)
@@ -207,7 +235,7 @@ export class WhatsAppHandler {
     }
 
     // Check if wants to cancel — ask first
-    if (['não', 'nao', 'n'].includes(message)) {
+    if (['não', 'nao', 'n', 'cancelar', 'cancela', 'cancel'].includes(message)) {
       await whatsappSessionService.updateState(phone, 'awaiting_cancel', context);
       return 'Deseja adicionar mais itens ou cancelar o pedido?\n\n*Adicionar* - voltar ao pedido\n*Cancelar* - cancelar tudo';
     }
@@ -234,6 +262,35 @@ export class WhatsAppHandler {
       if (hasStockWarning) newContext.stockWarning = true;
       await whatsappSessionService.updateState(phone, 'awaiting_items', newContext);
       return aiResponse.message;
+    }
+
+    // Fallback: if AI/NLP returned no products, try direct product name matching
+    if (aiResponse.products.length === 0) {
+      const directMatch = await this.matchProductDirectly(message);
+      if (directMatch) {
+        const existingItems = context.items || [];
+        const merged = this.mergeItemsLocal(existingItems, [directMatch]);
+        const displayItems = merged.map((i: any) => ({
+          name: i.name,
+          quantity: i.quantity,
+          price: i.price,
+          total: i.price * i.quantity,
+        }));
+        const subtotal = displayItems.reduce((sum: number, i: any) => sum + i.total, 0);
+
+        const lines: string[] = ['📋 *Pedido:*\n'];
+        for (const item of displayItems) {
+          lines.push(`• ${item.quantity}x ${item.name} - R$ ${item.total.toFixed(2)}`);
+        }
+        lines.push(`\n💰 *Total: R$ ${subtotal.toFixed(2)}*`);
+        lines.push('\n✅ Confirmar?\n❌ Remover item\n➕ Adicionar mais');
+
+        await whatsappSessionService.updateState(phone, 'awaiting_items', {
+          items: merged,
+          history: context.history,
+        });
+        return lines.join('\n');
+      }
     }
 
     // NLP/AI returned a message (disambiguation, category options, stock warning, etc.)
@@ -399,6 +456,70 @@ export class WhatsAppHandler {
     // Default: show order options
     const orderNum = context.lastOrderNumber || '';
     return `✅ Pedido #${orderNum} confirmado!\n\n*1* - Ver cardápio\n*2* - Novo pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente`;
+  }
+
+  private async matchProductDirectly(message: string): Promise<{ product_id: string; name: string; quantity: number; price: number } | null> {
+    try {
+      const catalog = await productsService.getCatalog();
+      const allProducts = catalog.flatMap((cat: any) => cat.products);
+
+      // Normalize: lowercase, remove accents, trim
+      const normalized = message
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Strip quantity prefix (e.g., "2x cafe coado" → "cafe coado")
+      const withoutQty = normalized.replace(/^\d+\s*x?\s*/, '').trim();
+
+      // Try direct substring match against product names
+      for (const p of allProducts) {
+        const nameNorm = p.name
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^\w\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (nameNorm.includes(withoutQty) || withoutQty.includes(nameNorm)) {
+          const stock = p.stock ?? 999;
+          if (stock <= 0) continue;
+
+          const qtyMatch = normalized.match(/^(\d+)\s*x?\s*/);
+          const quantity = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+
+          return {
+            product_id: p.id,
+            name: p.name,
+            quantity,
+            price: p.promo_price || p.price,
+          };
+        }
+      }
+    } catch {
+      // Non-critical, fall through
+    }
+    return null;
+  }
+
+  private mergeItemsLocal(existing: any[], newItems: any[]): any[] {
+    const map = new Map<string, any>();
+    for (const item of existing) {
+      if (item.product_id) map.set(item.product_id, { ...item });
+    }
+    for (const item of newItems) {
+      const ex = map.get(item.product_id);
+      if (ex) {
+        ex.quantity += item.quantity;
+      } else {
+        map.set(item.product_id, { ...item });
+      }
+    }
+    return Array.from(map.values());
   }
 
   private async handleNotesInput(phone: string, message: string, session: any): Promise<string> {

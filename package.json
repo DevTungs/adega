@@ -1,6 +1,6 @@
 {
   "name": "painel-delivery",
-  "version": "1.0.6",
+  "version": "1.0.12",
   "description": "Sistema de Delivery - Painel Administrativo",
   "main": "electron/main.js",
   "author": "Painel Delivery",
@@ -35,7 +35,7 @@
     "files": [
       "electron/**/*"
     ],
-    "compression": "store",
+    "compression": "normal",
     "asar": true,
     "extraResources": [
       {
@@ -82,7 +82,10 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
+      "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Painel Delivery",

@@ -6,7 +6,7 @@ interface LicenseState {
   isLoading: boolean;
   fetchStatus: () => Promise<void>;
   activate: (licenseKey: string) => Promise<void>;
-  validateNow: () => Promise<void>;
+  validateNow: () => Promise<LicenseStatusResponse>;
 }
 
 export const useLicenseStore = create<LicenseState>((set) => ({
@@ -40,6 +40,7 @@ export const useLicenseStore = create<LicenseState>((set) => ({
     try {
       const { data } = await licenseApi.validate();
       set({ license: data.data, isLoading: false });
+      return data.data;
     } catch (error) {
       set({ isLoading: false });
       throw error;

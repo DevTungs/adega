@@ -9,6 +9,7 @@ export interface LicenseStatusResponse {
   lastValidatedAt: string | null;
   lastError: string | null;
   canCreateOrders: boolean;
+  offline: boolean;
   message: string | null;
 }
 

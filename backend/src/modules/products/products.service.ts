@@ -74,30 +74,35 @@ export class ProductsService {
   }
 
   async findByBarcode(barcode: string) {
-    const localProduct = productsModel.findByBarcode(barcode);
+    let localProduct: any = null;
+    try {
+      localProduct = productsModel.findByBarcode(barcode);
+    } catch {
+      // DB error on local search, continue to API lookup
+    }
     if (localProduct) {
       return { found: true, source: 'local' as const, product: localProduct };
     }
 
-    const { lookupBarcode } = await import('./open-food-facts');
-    const offResult = await lookupBarcode(barcode);
+    const { lookupBarcode } = await import('./barcode-lookup');
+    const result = await lookupBarcode(barcode);
 
-    if (offResult.found) {
+    if (result.found) {
       return {
         found: true,
         source: 'api' as const,
         product: {
           barcode,
-          name: offResult.product_name || '',
-          brand: offResult.brands || '',
-          volume: offResult.quantity || '',
-          image_url: offResult.image_url || '',
-          description: offResult.categories || '',
+          name: result.product_name || '',
+          brand: result.brands || '',
+          volume: result.quantity || '',
+          image_url: result.image_url || '',
+          description: result.description || '',
         },
       };
     }
 
-    return { found: false };
+    return { found: false, error: result.error };
   }
 
   private groupCatalog(rows: any[]) {
@@ -120,6 +125,7 @@ export class ProductsService {
         price: row.price,
         promo_price: row.promo_price,
         image_url: row.image_url,
+        barcode: row.barcode,
         stock: row.stock,
         unit: row.unit,
         volume: row.volume,

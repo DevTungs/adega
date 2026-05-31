@@ -23,7 +23,9 @@ api.interceptors.response.use(
     if (error.response?.status === 402 && error.response?.data?.error === 'LICENSE_REQUIRED') {
       return Promise.reject(error);
     }
-    if (error.response?.status === 401) {
+    const isLoginRequest = error.config?.url?.includes('/auth/login');
+    const isOnLoginPage = window.location.hash.includes('/login') || window.location.pathname.includes('/login');
+    if (error.response?.status === 401 && !isLoginRequest && !isOnLoginPage) {
       localStorage.removeItem('token');
       window.location.href = '/login';
     }

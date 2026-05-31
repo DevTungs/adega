@@ -10,8 +10,8 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
         <Icon size={24} className="text-white" />
       </div>
       <div>
-        <p className="text-sm text-gray-500">{label}</p>
-        <p className="text-2xl font-bold text-gray-900">{value}</p>
+        <p className="text-sm text-gray-400">{label}</p>
+        <p className="text-2xl font-bold text-white">{value}</p>
       </div>
     </div>
   );
@@ -29,14 +29,14 @@ export default function Dashboard() {
   }, [fetchStats]);
 
   if (isLoading && !stats) {
-    return <div className="text-center text-gray-500 py-12">Carregando...</div>;
+    return <div className="text-center text-gray-400 py-12">Carregando...</div>;
   }
 
   if (!stats) return null;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <h1 className="text-2xl font-bold text-white">Dashboard</h1>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Clientes" value={stats.totalClients} icon={Users} color="bg-blue-500" />
@@ -51,14 +51,14 @@ export default function Dashboard() {
       </div>
 
       <div className="card">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Ativacoes Recentes</h2>
+        <h2 className="text-lg font-semibold text-white mb-4">Ativacoes Recentes</h2>
         {stats.recentActivations.length === 0 ? (
-          <p className="text-gray-500 text-sm">Nenhuma ativacao registrada.</p>
+          <p className="text-gray-400 text-sm">Nenhuma ativacao registrada.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-500 border-b">
+                <tr className="text-left text-gray-400 border-b border-gray-800">
                   <th className="pb-3 font-medium">Data</th>
                   <th className="pb-3 font-medium">Cliente</th>
                   <th className="pb-3 font-medium">Acao</th>
@@ -72,16 +72,16 @@ export default function Dashboard() {
                     <td className="py-3">{formatDate(a.created_at)}</td>
                     <td className="py-3">{a.client_name || '-'}</td>
                     <td className="py-3">
-                      <span className={a.action === 'activate' ? 'text-blue-600' : 'text-purple-600'}>
+                      <span className={a.action === 'activate' ? 'text-blue-400' : 'text-purple-400'}>
                         {a.action === 'activate' ? 'Ativacao' : 'Validacao'}
                       </span>
                     </td>
                     <td className="py-3">
-                      <span className={a.result === 'success' ? 'text-green-600' : 'text-red-600'}>
+                      <span className={a.result === 'success' ? 'text-green-400' : 'text-red-400'}>
                         {a.result === 'success' ? 'Sucesso' : 'Falha'}
                       </span>
                     </td>
-                    <td className="py-3 text-gray-500">{a.message || '-'}</td>
+                    <td className="py-3 text-gray-400">{a.message || '-'}</td>
                   </tr>
                 ))}
               </tbody>

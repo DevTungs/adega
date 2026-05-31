@@ -8,6 +8,8 @@ export interface License {
   plan_id: string;
   status: 'active' | 'expired' | 'blocked' | 'pending';
   machine_fingerprint: string | null;
+  max_machines: number;
+  active_machines: number;
   activated_at: string | null;
   expires_at: string;
   last_validated_at: string | null;
@@ -35,7 +37,7 @@ interface LicenseState {
   fetchAll: (filters?: { status?: string; client_id?: string }) => Promise<void>;
   fetchById: (id: string) => Promise<void>;
   fetchLogs: (id: string) => Promise<void>;
-  create: (data: { client_id: string; plan_id: string; expires_at: string }) => Promise<License>;
+  create: (data: { client_id: string; plan_id: string; expires_at: string; max_machines?: number }) => Promise<License>;
   renew: (id: string, expires_at: string) => Promise<License>;
   block: (id: string) => Promise<License>;
   unblock: (id: string) => Promise<License>;

@@ -21,7 +21,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
         <Link to="/reports" className="flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium text-sm">
           <BarChart3 size={18} />
           Ver Relatórios
@@ -36,10 +36,10 @@ export default function Dashboard() {
           <h3 className="text-lg font-semibold mb-4">Pedidos Recentes</h3>
           <div className="space-y-3">
             {recentOrders.map((order) => (
-              <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div key={order.id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
                 <div>
                   <span className="font-medium text-primary-600">#{order.order_number}</span>
-                  <span className="ml-2 text-gray-700">{order.customer_name || 'N/A'}</span>
+                  <span className="ml-2 text-gray-300">{order.customer_name || 'N/A'}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-medium">{formatCurrency(order.total)}</span>
@@ -50,7 +50,7 @@ export default function Dashboard() {
               </div>
             ))}
             {recentOrders.length === 0 && (
-              <p className="text-gray-500 text-center py-4">Nenhum pedido recente</p>
+              <p className="text-gray-400 text-center py-4">Nenhum pedido recente</p>
             )}
           </div>
         </div>
@@ -61,10 +61,10 @@ export default function Dashboard() {
           <div className="space-y-3">
             {stats?.byStatus.map((item) => (
               <div key={item.status} className="flex items-center justify-between">
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${STATUS_COLORS[item.status] || 'bg-gray-100'}`}>
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${STATUS_COLORS[item.status] || 'bg-gray-800'}`}>
                   {STATUS_LABELS[item.status] || item.status}
                 </span>
-                <span className="text-2xl font-bold text-gray-900">{item.count}</span>
+                <span className="text-2xl font-bold text-white">{item.count}</span>
               </div>
             ))}
           </div>

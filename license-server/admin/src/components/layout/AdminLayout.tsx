@@ -15,10 +15,10 @@ export default function AdminLayout() {
     <div className="flex min-h-screen">
       <Sidebar />
       <div className="flex-1 flex flex-col">
-        <header className="bg-white border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-800">LicenseHub</h2>
+        <header className="bg-gray-900 border-b border-gray-800 px-6 py-4">
+          <h2 className="text-lg font-semibold text-white">Netrix</h2>
         </header>
-        <main className="flex-1 p-6 bg-gray-50 overflow-auto">
+        <main className="flex-1 p-6 bg-gray-950 overflow-auto">
           <Outlet />
         </main>
       </div>

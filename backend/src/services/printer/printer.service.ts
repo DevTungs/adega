@@ -1,4 +1,9 @@
-import { printer as ThermalPrinter, PrinterTypes, CharacterSet } from 'node-thermal-printer';
+import {
+  printer as ThermalPrinter,
+  PrinterTypes,
+  CharacterSet,
+} from 'node-thermal-printer';
+
 import { execSync } from 'child_process';
 import { logger } from '../../shared/middlewares/logger';
 import { getDb } from '../../config/database';
@@ -7,16 +12,28 @@ class PrinterService {
   private printer: any = null;
   private connected = false;
 
+  private readonly PAPER_WIDTH = 48;
+
+  // =========================================================
+  // SETTINGS
+  // =========================================================
+
   private getSettings() {
     const db = getDb();
-    const rows = db.all('SELECT key, value FROM settings WHERE key LIKE ?', ['printer_%']);
+
+    const rows = db.all(
+      'SELECT key, value FROM settings WHERE key LIKE ?',
+      ['printer_%']
+    );
+
     const settings: Record<string, string> = {};
+
     for (const row of rows) {
       settings[row.key] = row.value;
     }
+
     return {
       type: settings.printer_type || 'usb',
-      interface: settings.printer_interface || 'USB',
       ip: settings.printer_ip || '',
       port: parseInt(settings.printer_port || '9100'),
       width: parseInt(settings.printer_width || '48'),
@@ -26,462 +43,632 @@ class PrinterService {
 
   private getStoreSettings() {
     const db = getDb();
-    const rows = db.all('SELECT key, value FROM settings WHERE key LIKE ?', ['store_%']);
+
+    const rows = db.all(
+      'SELECT key, value FROM settings WHERE key LIKE ?',
+      ['store_%']
+    );
+
     const settings: Record<string, string> = {};
+
     for (const row of rows) {
       settings[row.key] = row.value;
     }
+
     return {
-      name: settings.store_name || 'Loja',
+      name: settings.store_name || 'LOJA',
+      document: settings.store_document || '',
+      ie: settings.store_ie || '',
+      im: settings.store_im || '',
       address: settings.store_address || '',
       phone: settings.store_phone || '',
     };
   }
 
-  /**
-   * List available printers on Windows using PowerShell/WMI
-   */
+  // =========================================================
+  // HELPERS
+  // =========================================================
+
+  private hr(char = '-') {
+    return char.repeat(this.PAPER_WIDTH);
+  }
+
+  private hrDouble() {
+    return '='.repeat(this.PAPER_WIDTH);
+  }
+
+  private center(text: string) {
+    if (!text) return '';
+
+    if (text.length >= this.PAPER_WIDTH) {
+      return text;
+    }
+
+    const spaces = Math.floor(
+      (this.PAPER_WIDTH - text.length) / 2
+    );
+
+    return ' '.repeat(spaces) + text;
+  }
+
+  private truncate(text: string, size: number) {
+    if (!text) return '';
+
+    return text.length > size
+      ? `${text.substring(0, size - 3)}...`
+      : text;
+  }
+
+  private money(value: number) {
+    return 'R$ ' + Number(value || 0)
+      .toFixed(2)
+      .replace('.', ',');
+  }
+
+  private moneyRaw(value: number) {
+    return Number(value || 0)
+      .toFixed(2)
+      .replace('.', ',');
+  }
+
+  private row(left: string, right: string) {
+    const space =
+      this.PAPER_WIDTH -
+      left.length -
+      right.length;
+
+    return (
+      left +
+      ' '.repeat(Math.max(1, space)) +
+      right
+    );
+  }
+
+  private totalLine(
+    label: string,
+    value: number
+  ) {
+    return this.row(
+      label,
+      this.moneyRaw(value)
+    );
+  }
+
+  private itemLine(item: any, index: number) {
+    const code = String(index).padStart(3, '0');
+    const qty = Number(item.quantity || 0);
+    const unit = item.unit || 'UN';
+    const unitPrice = Number(item.unit_price || 0);
+    const total = qty * unitPrice;
+
+    // Line 1: CODE DESCRIPTION
+    const desc = this.truncate(
+      item.product_name || 'PRODUTO',
+      this.PAPER_WIDTH - code.length - 2
+    );
+    const line1 = `${code} ${desc}`;
+
+    // Line 2: QTD x UNIT = TOTAL (indented)
+    const detail = `${qty.toFixed(3).replace('.', ',')} ${unit} X ${this.moneyRaw(unitPrice)}`;
+    const line2 = `   ${this.row(detail, this.moneyRaw(total))}`;
+
+    return line1 + '\n' + line2;
+  }
+
+  private formatPayment(method: string) {
+    const map: Record<string, string> = {
+      cash: 'Dinheiro',
+      credit_card: 'Cartao de Credito',
+      debit_card: 'Cartao de Debito',
+      pix: 'PIX',
+      voucher: 'Vale',
+    };
+
+    return map[method] || method.toUpperCase();
+  }
+
+  private formatCPF(value: string) {
+    if (!value) return '';
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 11) {
+      return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+    if (digits.length === 14) {
+      return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    }
+    return value;
+  }
+
+  // =========================================================
+  // PRINTERS
+  // =========================================================
+
   getAvailablePrinters(): string[] {
     try {
       const result = execSync(
         'powershell -NoProfile -Command "Get-Printer | Select-Object -ExpandProperty Name"',
-        { encoding: 'utf-8', timeout: 10000 }
+        {
+          encoding: 'utf-8',
+          timeout: 10000,
+        }
       );
-      return result.split('\n').map(s => s.trim()).filter(Boolean);
+
+      return result
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
     } catch (err: any) {
-      logger.error({ error: err.message }, 'Failed to list printers');
+      logger.error(
+        { error: err.message },
+        'Failed to list printers'
+      );
+
       return [];
     }
   }
+
+  // =========================================================
+  // INIT
+  // =========================================================
 
   private async initPrinter(): Promise<boolean> {
     try {
       const config = this.getSettings();
 
       if (config.type === 'network') {
-        // Network printer via TCP
-        const iface = `tcp://${config.ip}:${config.port}`;
         this.printer = new ThermalPrinter({
           type: PrinterTypes.EPSON,
-          interface: iface,
+          interface: `tcp://${config.ip}:${config.port}`,
           width: config.width,
           characterSet: CharacterSet.PC860_PORTUGUESE,
+          removeSpecialCharacters: false,
+          lineCharacter: '-',
         });
-        this.connected = await this.printer.isPrinterConnected();
+
+        this.connected =
+          await this.printer.isPrinterConnected();
+
         return this.connected;
       }
 
-      // USB/local printer via Windows print subsystem
       if (!config.printerName) {
-        logger.warn('No printer name configured - set printer_name in settings');
-        this.connected = false;
+        logger.warn('No printer configured');
         return false;
       }
 
       this.printer = new ThermalPrinter({
         type: PrinterTypes.EPSON,
         interface: `printer:${config.printerName}`,
-        driver: this.getWindowsDriver(),
         width: config.width,
         characterSet: CharacterSet.PC860_PORTUGUESE,
+        removeSpecialCharacters: false,
+        lineCharacter: '-',
       });
 
-      this.connected = await this.printer.isPrinterConnected();
+      this.connected =
+        await this.printer.isPrinterConnected();
+
       return this.connected;
+
     } catch (err: any) {
-      logger.error({ error: err.message }, 'Printer init failed');
-      this.connected = false;
+      logger.error(
+        { error: err.message },
+        'Printer initialization failed'
+      );
+
       return false;
     }
   }
 
-  private shouldUseWindowsTextPrint(printerName: string): boolean {
-    const name = printerName.toLowerCase();
-    return name.includes('microsoft print to pdf') || name.includes('pdf') || name.includes('xps');
-  }
+  // =========================================================
+  // WINDOWS DRIVER
+  // =========================================================
 
-  /**
-   * Windows printer driver using PowerShell/.NET
-   */
   private getWindowsDriver() {
     return {
       getPrinters: () => {
         try {
           const result = execSync(
-            'powershell -NoProfile -Command "Get-Printer | Select-Object Name, PrinterStatus, Type | ConvertTo-Json"',
-            { encoding: 'utf-8', timeout: 10000 }
+            'powershell -NoProfile -Command "Get-Printer | Select-Object Name | ConvertTo-Json"',
+            {
+              encoding: 'utf-8',
+              timeout: 10000,
+            }
           );
+
           const printers = JSON.parse(result);
-          const list = Array.isArray(printers) ? printers : [printers];
+
+          const list = Array.isArray(printers)
+            ? printers
+            : [printers];
+
           return list.map((p: any) => ({
             name: p.Name,
             isDefault: false,
-            attributes: 'RAW-ONLY',
-            options: {
-              'printer-make-and-model': '',
-              'system_driver': '',
-              'printer-state': p.PrinterStatus === 0 ? '3' : '4',
-              'printer-location': '',
-              'printer-info': p.Name,
-              'raw_only': true,
-            },
           }));
-        } catch (err: any) {
-          logger.error({ error: err.message }, 'Failed to enumerate printers');
+
+        } catch {
           return [];
         }
       },
-      getPrinter: (name: string) => {
-        return {
-          name,
-          status: 'IDLE',
-          attributes: 'RAW-ONLY',
-        };
-      },
+
+      getPrinter: (name: string) => ({
+        name,
+        status: 'IDLE',
+      }),
+
       printDirect: (options: any) => {
         try {
-          const printerName = options.printer || options.printerName;
-          if (!printerName) throw new Error('No printer name specified');
+          const printerName =
+            options.printer || options.printerName;
+
+          if (!printerName) {
+            throw new Error('Printer not defined');
+          }
 
           const fs = require('fs');
           const path = require('path');
-          const tmpFile = path.join(process.env.TEMP || '/tmp', `print_${Date.now()}.prn`);
+
+          // options.data is a Buffer with ESC/POS binary commands
+          // Write to temp file as raw bytes, then use PowerShell to send directly to printer port
+          const tmpFile = path.join(
+            process.env.TEMP || '/tmp',
+            `ticket_${Date.now()}.bin`
+          );
+
           fs.writeFileSync(tmpFile, options.data);
 
-          // Write PS1 script to temp file to avoid here-string escaping issues
-          const psFile = path.join(process.env.TEMP || '/tmp', `raw_${Date.now()}.ps1`);
-          const psScript = `$ErrorActionPreference = 'Stop'
-Add-Type -TypeDefinition @"
-using System;
-using System.IO;
-using System.Runtime.InteropServices;
+          // Send raw ESC/POS bytes to Windows printer via PrintQueue
+          // This bypasses GDI DrawString and sends binary commands directly
+          const escapedPrinter = printerName.replace(/'/g, "''");
+          const escapedFile = tmpFile.replace(/'/g, "''");
 
-public class RawPrinter {
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    public class DOCINFOA {
-        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
-    }
+          // Write a PowerShell script to temp file to avoid escaping issues
+          const psFile = path.join(
+            process.env.TEMP || '/tmp',
+            `print_${Date.now()}.ps1`
+          );
 
-    [DllImport("winspool.Drv", EntryPoint = "OpenPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
+          const psScript = `
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Printing
+$printerName = '${escapedPrinter}'
+$file = '${escapedFile}'
 
-    [DllImport("winspool.Drv", EntryPoint = "ClosePrinter", SetLastError = true)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
+$printServer = New-Object System.Printing.PrintServer
+$queue = $printServer.GetPrintQueues() | Where-Object { $_.Name -eq $printerName } | Select-Object -First 1
+if (-not $queue) { throw "Printer '$printerName' not found" }
 
-    [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterA", SetLastError = true, CharSet = CharSet.Ansi)]
-    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
+$bytes = [System.IO.File]::ReadAllBytes($file)
+$job = $queue.AddJob('Ticket')
+$stream = $job.JobStream
+$stream.Write($bytes, 0, $bytes.Length)
+$stream.Close()
+`.trim();
 
-    [DllImport("winspool.Drv", EntryPoint = "EndDocPrinter", SetLastError = true)]
-    public static extern bool EndDocPrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.Drv", EntryPoint = "StartPagePrinter", SetLastError = true)]
-    public static extern bool StartPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.Drv", EntryPoint = "EndPagePrinter", SetLastError = true)]
-    public static extern bool EndPagePrinter(IntPtr hPrinter);
-
-    [DllImport("winspool.Drv", EntryPoint = "WritePrinter", SetLastError = true)]
-    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
-
-    public static void SendBytesToPrinter(string szPrinterName, string szFileName) {
-        IntPtr hPrinter = new IntPtr(0);
-        DOCINFOA di = new DOCINFOA();
-        int dwWritten = 0;
-        di.pDocName = "Order";
-        di.pDataType = "RAW";
-        byte[] bytes = File.ReadAllBytes(szFileName);
-        IntPtr pUnmanagedBytes = Marshal.AllocCoTaskMem(bytes.Length);
-        Marshal.Copy(bytes, 0, pUnmanagedBytes, bytes.Length);
-        try {
-            if (!OpenPrinter(szPrinterName, out hPrinter, IntPtr.Zero)) {
-                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "OpenPrinter failed");
-            }
-            if (!StartDocPrinter(hPrinter, 1, di)) {
-                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "StartDocPrinter failed");
-            }
-            if (!StartPagePrinter(hPrinter)) {
-                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "StartPagePrinter failed");
-            }
-            if (!WritePrinter(hPrinter, pUnmanagedBytes, bytes.Length, out dwWritten)) {
-                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "WritePrinter failed");
-            }
-            if (dwWritten != bytes.Length) {
-                throw new Exception("WritePrinter wrote " + dwWritten + " of " + bytes.Length + " bytes");
-            }
-            EndPagePrinter(hPrinter);
-            EndDocPrinter(hPrinter);
-        } finally {
-            if (hPrinter != IntPtr.Zero) ClosePrinter(hPrinter);
-            Marshal.FreeCoTaskMem(pUnmanagedBytes);
-        }
-    }
-}
-"@
-try {
-    [RawPrinter]::SendBytesToPrinter('${printerName.replace(/'/g, "''")}', '${tmpFile.replace(/'/g, "''")}')
-    Write-Output 'OK'
-} catch {
-    Write-Error $_.Exception.Message
-} finally {
-    Start-Sleep 1
-    Remove-Item '${tmpFile.replace(/'/g, "''")}' -Force -EA SilentlyContinue
-}`;
-
-          fs.writeFileSync(psFile, psScript, { encoding: 'utf-8' });
+          fs.writeFileSync(psFile, psScript, 'utf-8');
 
           try {
             execSync(
-              `powershell -NoProfile -ExecutionPolicy Bypass -File "${psFile}"`,
-              { encoding: 'utf-8', timeout: 30000 }
+              `powershell -NoProfile -ExecutionPolicy Bypass -File "${psFile.replace(/"/g, '""')}"`,
+              {
+                encoding: 'utf-8',
+                timeout: 30000,
+              }
             );
           } finally {
             try { fs.unlinkSync(psFile); } catch {}
           }
 
-          if (options.success) options.success();
+          try {
+            fs.unlinkSync(tmpFile);
+          } catch {}
+
+          if (options.success) {
+            options.success();
+          }
+
         } catch (err: any) {
-          logger.error({ error: err.message }, 'Print direct failed');
-          if (options.error) options.error(err.message);
+          logger.error(
+            { error: err.message },
+            'Direct print failed'
+          );
+
+          if (options.error) {
+            options.error(err.message);
+          }
         }
       },
     };
   }
 
+  // =========================================================
+  // PRINT ORDER — CUPOM NAO FISCAL
+  // =========================================================
+
   async printOrder(order: any): Promise<boolean> {
     const store = this.getStoreSettings();
-    const config = this.getSettings();
 
-    logger.info({
-      orderNumber: order.order_number,
-      total: order.total,
-      items: order.items?.length || 0,
-      printerType: config.type,
-      printerName: config.printerName || undefined,
-      printerIp: config.ip || undefined,
-    }, 'Printing order');
+    logger.info(
+      {
+        order: order.order_number,
+        total: order.total,
+      },
+      'Printing cupom'
+    );
 
     try {
-      const ok = await this.initPrinter();
-      if (!ok) {
-        logger.warn('Printer not connected - logging ticket only');
+      const connected = await this.initPrinter();
+
+      if (!connected) {
         this.logTicket(order, store);
         return false;
       }
 
       const p = this.printer;
 
-      if (config.type !== 'network' && this.shouldUseWindowsTextPrint(config.printerName)) {
-        this.printOrderAsWindowsText(order, store, config.printerName);
-        logger.info({ orderNumber: order.order_number }, 'Order printed');
-        return true;
-      }
+      // =====================================================
+      // CABECALHO — DADOS DO ESTABELECIMENTO
+      // =====================================================
 
-      // Header
       p.alignCenter();
-      p.bold(true);
+
       p.setTextSize(1, 1);
-      p.println(store.name);
+      p.bold(true);
+      p.println(store.name.toUpperCase());
       p.bold(false);
       p.setTextSize(0, 0);
-      if (store.address) p.println(store.address);
-      if (store.phone) p.println(store.phone);
-      p.drawLine();
 
-      // Order info
+      if (store.document) {
+        p.println(`CNPJ: ${this.formatCPF(store.document)}`);
+      }
+
+      if (store.ie) {
+        p.println(`IE: ${store.ie}`);
+      }
+
+      if (store.im) {
+        p.println(`IM: ${store.im}`);
+      }
+
+      if (store.address) {
+        p.println(store.address);
+      }
+
+      if (store.phone) {
+        p.println(`Tel: ${store.phone}`);
+      }
+
+      p.println(this.hr());
+
+      // =====================================================
+      // TIPO DE DOCUMENTO
+      // =====================================================
+
+      p.bold(true);
+      p.setTextSize(0, 1);
+      p.println('CUPOM NAO FISCAL');
+      p.setTextSize(0, 0);
+      p.bold(false);
+
+      p.println(this.hr());
+
+      // =====================================================
+      // DADOS DO PEDIDO
+      // =====================================================
+
       p.alignLeft();
-      p.bold(true);
-      p.println(`Pedido #${order.order_number}`);
-      p.bold(false);
-      p.println(`Data: ${new Date(order.created_at).toLocaleString('pt-BR')}`);
-      p.println(`Cliente: ${order.customer_name || 'N/A'}`);
-      if (order.customer_phone) p.println(`Tel: ${order.customer_phone}`);
-      p.drawLine();
 
-      // Items
-      p.bold(true);
-      p.println('ITENS:');
-      p.bold(false);
+      p.println(this.row('Pedido N.:', String(order.order_number).padStart(6, '0')));
+      p.println(this.row('Data:', new Date(order.created_at).toLocaleString('pt-BR')));
 
-      if (order.items) {
-        for (const item of order.items) {
-          const name = item.product_name || 'Produto';
-          const qty = item.quantity;
-          const price = (item.unit_price * qty).toFixed(2);
-          p.println(`${qty}x ${name}`);
-          p.alignRight();
-          p.println(`R$ ${price}`);
-          p.alignLeft();
+      if (order.order_type) {
+        const tipo = order.order_type === 'delivery' ? 'DELIVERY' : 'BALCAO';
+        p.println(this.row('Tipo:', tipo));
+      }
+
+      // =====================================================
+      // DADOS DO CLIENTE
+      // =====================================================
+
+      if (order.customer_name || order.customer_phone) {
+        p.println(this.hr('-'));
+
+        if (order.customer_name) {
+          p.println(this.row('Cliente:', this.truncate(order.customer_name, 30)));
+        }
+
+        if (order.customer_phone) {
+          p.println(this.row('Tel:', order.customer_phone));
+        }
+
+        if (order.delivery_address) {
+          p.println('End: ' + this.truncate(order.delivery_address, this.PAPER_WIDTH - 5));
         }
       }
 
-      p.drawLine();
+      p.println(this.hr());
 
-      // Totals
-      p.alignRight();
-      p.println(`Subtotal: R$ ${Number(order.subtotal).toFixed(2)}`);
-      if (order.discount > 0) p.println(`Desconto: -R$ ${Number(order.discount).toFixed(2)}`);
-      if (order.delivery_fee > 0) p.println(`Entrega: R$ ${Number(order.delivery_fee).toFixed(2)}`);
+      // =====================================================
+      // ITENS
+      // =====================================================
+
       p.bold(true);
-      p.setTextSize(1, 1);
-      p.println(`TOTAL: R$ ${Number(order.total).toFixed(2)}`);
+      p.println(this.row('COD  DESCRICAO', 'VALOR'));
+      p.bold(false);
+
+      p.println(this.hr('-'));
+
+      const items = order.items || [];
+      for (let i = 0; i < items.length; i++) {
+        p.println(this.itemLine(items[i], i + 1));
+      }
+
+      p.println(this.hr('='));
+
+      // =====================================================
+      // TOTAIS
+      // =====================================================
+
+      const subtotal = Number(order.subtotal || 0);
+      const discount = Number(order.discount || 0);
+      const deliveryFee = Number(order.delivery_fee || 0);
+      const total = Number(order.total || 0);
+
+      p.println(this.totalLine('SUBTOTAL', subtotal));
+
+      if (discount > 0) {
+        p.println(this.totalLine('DESCONTO (-)', discount));
+      }
+
+      if (deliveryFee > 0) {
+        p.println(this.totalLine('TAXA ENTREGA', deliveryFee));
+      }
+
+      p.println(this.hr('='));
+
+      p.bold(true);
+      p.setTextSize(0, 1);
+      p.println(this.row('TOTAL:', this.moneyRaw(total)));
       p.setTextSize(0, 0);
       p.bold(false);
-      p.alignLeft();
 
-      p.drawLine();
+      p.println(this.hr('='));
 
-      // Payment & Delivery
-      if (order.payment_method) p.println(`Pagamento: ${this.formatPayment(order.payment_method)}`);
-      if (order.delivery_address) {
-        p.println('Endereco:');
-        p.println(order.delivery_address);
+      // =====================================================
+      // PAGAMENTO
+      // =====================================================
+
+      if (order.payment_method) {
+        p.println(this.row('Forma Pgto:', this.formatPayment(order.payment_method)));
       }
+
+      const paidAmount = Number(order.paid_amount || total);
+      const change = Number(order.change || 0);
+
+      if (order.payment_method === 'cash' && paidAmount > 0) {
+        p.println(this.row('Valor Pago:', this.moneyRaw(paidAmount)));
+        if (change > 0) {
+          p.println(this.row('Troco:', this.moneyRaw(change)));
+        }
+      }
+
+      p.println(this.hr());
+
+      // =====================================================
+      // OBSERVACOES
+      // =====================================================
+
       if (order.notes) {
-        p.println(`Obs: ${order.notes}`);
+        p.println('');
+        p.bold(true);
+        p.println('Observacoes:');
+        p.bold(false);
+        p.println(this.truncate(order.notes, this.PAPER_WIDTH));
+        p.println(this.hr());
       }
 
-      p.drawLine();
+      // =====================================================
+      // RODAPE
+      // =====================================================
+
       p.alignCenter();
+
+      p.println('');
       p.println('Obrigado pela preferencia!');
+      p.println('Volte sempre :)');
+      p.println('');
+
+      p.println(this.hr());
+      p.println(new Date().toLocaleString('pt-BR'));
+      p.println(`Pedido #${order.order_number}`);
+      p.println('');
+
       p.println('');
       p.println('');
+
       p.cut();
 
       await p.execute();
-      logger.info({ orderNumber: order.order_number }, 'Order printed');
+
+      logger.info(
+        {
+          order: order.order_number,
+        },
+        'Cupom printed successfully'
+      );
+
       return true;
 
     } catch (err: any) {
-      logger.error({ error: err.message }, 'Print failed');
+      logger.error(
+        { error: err.message },
+        'Print failed'
+      );
+
       this.logTicket(order, store);
+
       return false;
     }
   }
 
-  private printOrderAsWindowsText(order: any, store: any, printerName: string): void {
-    const fs = require('fs');
-    const path = require('path');
-    const tmpDir = process.env.TEMP || '/tmp';
-    const textFile = path.join(tmpDir, `ticket_${Date.now()}.txt`);
-    const psFile = path.join(tmpDir, `text_print_${Date.now()}.ps1`);
-    const ticket = this.buildTextTicket(order, store);
+  // =========================================================
+  // FALLBACK LOG
+  // =========================================================
 
-    fs.writeFileSync(textFile, ticket, { encoding: 'utf-8' });
-
-    const psScript = `$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
-$printerName = '${printerName.replace(/'/g, "''")}'
-$text = [System.IO.File]::ReadAllText('${textFile.replace(/'/g, "''")}')
-$font = New-Object System.Drawing.Font('Consolas', 10)
-$brush = [System.Drawing.Brushes]::Black
-$doc = New-Object System.Drawing.Printing.PrintDocument
-$doc.PrinterSettings.PrinterName = $printerName
-if (-not $doc.PrinterSettings.IsValid) { throw "Invalid printer: $printerName" }
-$doc.add_PrintPage({
-  param($sender, $eventArgs)
-  $eventArgs.Graphics.DrawString($text, $font, $brush, 20, 20)
-  $eventArgs.HasMorePages = $false
-})
-try {
-  $doc.Print()
-} finally {
-  $font.Dispose()
-  $doc.Dispose()
-  Remove-Item '${textFile.replace(/'/g, "''")}' -Force -EA SilentlyContinue
-}`;
-
-    fs.writeFileSync(psFile, psScript, { encoding: 'utf-8' });
-    try {
-      execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${psFile}"`, { encoding: 'utf-8', timeout: 30000 });
-    } finally {
-      try { fs.unlinkSync(psFile); } catch {}
-    }
-  }
-
-  private buildTextTicket(order: any, store: any): string {
+  private logTicket(order: any, store: any) {
     const lines = [
-      '================================',
-      `  ${store.name}`,
-      '================================',
-      `  PEDIDO #${order.order_number}`,
-      `  ${new Date(order.created_at).toLocaleString('pt-BR')}`,
-      `  Cliente: ${order.customer_name || 'N/A'}`,
+      this.hr('='),
+      this.center(store.name.toUpperCase()),
+      this.center('CUPOM NAO FISCAL'),
+      this.hr('='),
+      `Pedido: ${order.order_number}`,
+      `Data: ${new Date(order.created_at).toLocaleString('pt-BR')}`,
+      this.hr('-'),
     ];
 
-    if (order.customer_phone) lines.push(`  Tel: ${order.customer_phone}`);
-    lines.push('================================');
-
-    if (order.items) {
-      for (const item of order.items) {
-        lines.push(`  ${item.quantity}x ${item.product_name}`);
-        lines.push(`  R$ ${(item.unit_price * item.quantity).toFixed(2)}`);
-      }
+    for (const item of order.items || []) {
+      lines.push(`${item.quantity}x ${item.product_name} ... ${this.money(item.unit_price * item.quantity)}`);
     }
 
-    lines.push('--------------------------------');
-    lines.push(`  Subtotal: R$ ${Number(order.subtotal).toFixed(2)}`);
-    if (order.discount > 0) lines.push(`  Desconto: -R$ ${Number(order.discount).toFixed(2)}`);
-    if (order.delivery_fee > 0) lines.push(`  Entrega: R$ ${Number(order.delivery_fee).toFixed(2)}`);
-    lines.push(`  TOTAL: R$ ${Number(order.total).toFixed(2)}`);
+    lines.push(this.hr('='));
+    lines.push(`TOTAL: ${this.money(order.total)}`);
+    lines.push(this.hr('='));
 
-    if (order.payment_method) lines.push(`  Pagamento: ${this.formatPayment(order.payment_method)}`);
-    if (order.delivery_address) {
-      lines.push('  Endereco:');
-      lines.push(`  ${order.delivery_address}`);
-    }
-    if (order.notes) lines.push(`  Obs: ${order.notes}`);
-
-    lines.push('================================');
-    lines.push('  Obrigado pela preferencia!');
-    lines.push('================================');
-
-    return `${lines.join('\n')}\n`;
-  }
-  private logTicket(order: any, store: any): void {
-    const lines = [
-      '================================',
-      `  ${store.name}`,
-      '================================',
-      `  PEDIDO #${order.order_number}`,
-      `  ${new Date(order.created_at).toLocaleString('pt-BR')}`,
-      `  Cliente: ${order.customer_name || 'N/A'}`,
-      '================================',
-    ];
-
-    if (order.items) {
-      for (const item of order.items) {
-        lines.push(`  ${item.quantity}x ${item.product_name}  R$ ${(item.unit_price * item.quantity).toFixed(2)}`);
-      }
-    }
-
-    lines.push('--------------------------------');
-    lines.push(`  TOTAL: R$ ${Number(order.total).toFixed(2)}`);
-    lines.push('================================');
-
-    logger.info({ ticket: lines.join('\n') }, 'Ticket (printer not connected)');
+    logger.info(
+      {
+        ticket: lines.join('\n'),
+      },
+      'Ticket fallback'
+    );
   }
 
-  private formatPayment(method: string): string {
-    const map: Record<string, string> = {
-      cash: 'Dinheiro',
-      credit_card: 'Cartao Credito',
-      debit_card: 'Cartao Debito',
-      pix: 'PIX',
-      voucher: 'Vale',
-    };
-    return map[method] || method;
-  }
+  // =========================================================
+  // STATUS
+  // =========================================================
 
-  async checkPrinter(): Promise<{ connected: boolean; printers: string[] }> {
-    const printers = this.getAvailablePrinters();
+  async checkPrinter(): Promise<{
+    connected: boolean;
+    printers: string[];
+  }> {
+    const printers =
+      this.getAvailablePrinters();
+
     try {
-      const ok = await this.initPrinter();
-      return { connected: ok, printers };
+      const connected =
+        await this.initPrinter();
+
+      return {
+        connected,
+        printers,
+      };
+
     } catch {
-      return { connected: false, printers };
+      return {
+        connected: false,
+        printers,
+      };
     }
   }
 }

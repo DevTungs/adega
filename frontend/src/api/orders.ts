@@ -1,7 +1,7 @@
 import api from './client';
 
 export const ordersApi = {
-  getAll: (params?: { status?: string; limit?: number; offset?: number }) =>
+  getAll: (params?: { status?: string; order_type?: string; limit?: number; offset?: number }) =>
     api.get('/orders', { params }),
 
   getById: (id: string) =>

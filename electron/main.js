@@ -3,16 +3,18 @@ const path = require('path');
 const fs = require('fs');
 const { loadElectronEnv } = require('./config');
 const { getBackendPath } = require('./utils');
-const { setupUpdater, checkAndUpdate } = require('./updater');
+const { setupUpdater, checkAndUpdate, abortUpdateCheck } = require('./updater');
 
 let mainWindow = null;
 let backendServer = null;
 
 function updateLoadingText(text) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.executeJavaScript(
-      `document.querySelector('.status-text').textContent = ${JSON.stringify(text)};`
-    ).catch(() => {});
+    try {
+      mainWindow.webContents.executeJavaScript(
+        `document.querySelector('.status-text').textContent = ${JSON.stringify(text)};`
+      ).catch(() => {});
+    } catch {}
   }
 }
 
@@ -30,41 +32,51 @@ const LOADING_HTML = `<!DOCTYPE html>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f8fafc;
+      background: #0f172a;
       display: flex; align-items: center; justify-content: center;
-      height: 100vh; color: #334155;
+      height: 100vh; color: #f1f5f9;
     }
     .card {
       text-align: center; padding: 48px;
+      animation: fade-in 0.6s ease-out;
     }
+    .logo {
+      width: 72px; height: 72px;
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 24px;
+      box-shadow: 0 8px 32px rgba(99,102,241,0.3);
+    }
+    .logo svg { width: 36px; height: 36px; }
     .spinner {
-      width: 48px; height: 48px;
-      border: 4px solid #e2e8f0;
-      border-top-color: #3b82f6;
+      width: 40px; height: 40px;
+      border: 3px solid #1e293b;
+      border-top-color: #6366f1;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
-      margin: 0 auto 24px;
+      margin: 0 auto 20px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
-    p  { font-size: 14px; color: #64748b; }
-    .dots::after {
-      content: '';
-      animation: dots 1.5s steps(4, end) infinite;
-    }
-    @keyframes dots {
-      0%  { content: ''; }
-      25% { content: '.'; }
-      50% { content: '..'; }
-      75% { content: '...'; }
-    }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; background: linear-gradient(90deg, #818cf8, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    h2 { font-size: 14px; font-weight: 500; color: #94a3b8; margin-bottom: 24px; }
+    p  { font-size: 13px; color: #64748b; }
+    .dots::after { content: ''; animation: dots 1.5s steps(4, end) infinite; }
+    @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
   </style>
 </head>
 <body>
   <div class="card">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    </div>
+    <h1>NETRIX SYSTEM</h1>
+    <h2>Iniciando sistema</h2>
     <div class="spinner"></div>
-    <h1>Iniciando sistema</h1>
-    <p class="status-text">Verificando atualizações<span class="dots"></span></p>
+    <p class="status-text">Verificando atualizacoes<span class="dots"></span></p>
   </div>
 </body>
 </html>`;
@@ -77,14 +89,14 @@ const ERROR_HTML_TEMPLATE = (title, msg) => `<!DOCTYPE html>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f8fafc; display: flex; align-items: center; justify-content: center;
-      height: 100vh; color: #334155;
+      background: #0f172a; display: flex; align-items: center; justify-content: center;
+      height: 100vh; color: #f1f5f9;
     }
     .card { text-align: center; padding: 48px; max-width: 480px; }
-    .icon { font-size: 48px; margin-bottom: 16px; }
+    .icon { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 50%; background: #1e293b; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #ef4444; }
     h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
-    p  { font-size: 14px; color: #64748b; line-height: 1.6; }
-    code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    p  { font-size: 14px; color: #94a3b8; line-height: 1.6; }
+    code { background: #1e293b; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #e2e8f0; }
   </style>
 </head>
 <body>
@@ -104,7 +116,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     frame: true,
-    title: 'Painel Delivery',
+    title: 'Netrix System',
     icon: getIconPath(),
     show: false,
     webPreferences: {
@@ -236,14 +248,22 @@ app.whenReady().then(async () => {
 
   // 2. Check for updates BEFORE starting backend (only in packaged mode)
   if (app.isPackaged) {
+    // Watchdog: if update check takes more than 65s, abort and proceed
+    const updateWatchdogTimer = setTimeout(() => {
+      console.error('[Electron] Update check watchdog fired — aborting and proceeding');
+      abortUpdateCheck();
+    }, 65000);
+
     const updateResult = await checkAndUpdate();
+
+    clearTimeout(updateWatchdogTimer);
 
     if (updateResult.downloaded) {
       // Update downloaded — show installer UI so user sees progress
       updateLoadingText('Instalando atualização... O instalador será aberto.');
       await new Promise(r => setTimeout(r, 1500));
       const { autoUpdater } = require('electron-updater');
-      autoUpdater.quitAndInstall(false, true);
+      autoUpdater.quitAndInstall(true, true);
       return; // App will restart
     }
   }

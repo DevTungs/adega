@@ -48,7 +48,7 @@ export default function StatsCards({ stats }: Props) {
           </div>
           <div>
             <p className="text-sm text-gray-500">{card.label}</p>
-            <p className="text-xl font-bold text-gray-900">{card.value}</p>
+            <p className="text-xl font-bold text-white">{card.value}</p>
           </div>
         </div>
       ))}

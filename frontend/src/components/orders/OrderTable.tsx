@@ -62,7 +62,7 @@ export default function OrderTable({ orders, onStatusChange, onViewDetails }: Pr
   return (
     <div className="card overflow-hidden p-0">
       <table className="w-full">
-        <thead className="bg-gray-50 border-b border-gray-200">
+        <thead className="bg-gray-800/50 border-b border-gray-800">
           <tr>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente</th>
@@ -74,19 +74,19 @@ export default function OrderTable({ orders, onStatusChange, onViewDetails }: Pr
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-gray-800">
           {orders.map((order) => (
-            <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+            <tr key={order.id} className="hover:bg-gray-800/50 transition-colors">
               <td className="px-4 py-3 font-medium text-primary-600">#{order.order_number}</td>
               <td className="px-4 py-3">
-                <div className="font-medium text-gray-900">{order.customer_name || 'N/A'}</div>
+                <div className="font-medium text-white">{order.customer_name || 'N/A'}</div>
                 <div className="text-sm text-gray-500">{order.customer_phone}</div>
               </td>
-              <td className="px-4 py-3 text-sm text-gray-600">
+              <td className="px-4 py-3 text-sm text-gray-400">
                 {order.items?.length || 0} {order.items?.length === 1 ? 'item' : 'itens'}
               </td>
               <td className="px-4 py-3 font-medium">{formatCurrency(order.total)}</td>
-              <td className="px-4 py-3 text-sm text-gray-600">
+              <td className="px-4 py-3 text-sm text-gray-400">
                 {PAYMENT_LABELS[order.payment_method || ''] || 'N/A'}
               </td>
               <td className="px-4 py-3">
@@ -97,7 +97,7 @@ export default function OrderTable({ orders, onStatusChange, onViewDetails }: Pr
                 <div className="flex items-center justify-end gap-2">
                   <button
                     onClick={() => onViewDetails(order)}
-                    className="p-1 text-gray-400 hover:text-gray-600"
+                    className="p-1 text-gray-400 hover:text-gray-400"
                     title="Ver detalhes"
                   >
                     <Eye size={18} />

@@ -16,9 +16,9 @@ export class ProductsModel {
       params.push(filters.is_active ? 1 : 0);
     }
     if (filters?.search) {
-      conditions.push('(name LIKE ? OR brand LIKE ? OR description LIKE ?)');
+      conditions.push('(name LIKE ? OR brand LIKE ? OR description LIKE ? OR barcode LIKE ?)');
       const s = `%${filters.search}%`;
-      params.push(s, s, s);
+      params.push(s, s, s, s);
     }
 
     const where = conditions.length > 0 ? conditions.join(' AND ') : undefined;

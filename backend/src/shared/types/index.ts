@@ -17,8 +17,6 @@ export interface JWTPayload {
   username: string;
   name?: string;
   role: string;
-  client_id?: string | null;
-  client_name?: string | null;
 }
 
 export type OrderStatus =

@@ -82,7 +82,12 @@
       "Bash(timeout 20 npx electron .)",
       "Bash(npx --version)",
       "Bash(node -e \"try { const sharp = require\\(''sharp''\\); console.log\\(''sharp version:'', sharp.versions\\); } catch\\(e\\) { console.error\\(''Error:'', e.message\\); }\")",
-      "Bash(rm \"E:/adega/electron/icon.ico\")"
+      "Bash(rm \"E:/adega/electron/icon.ico\")",
+      "mcp__ide__getDiagnostics",
+      "Bash(sqlite3 data/delivery.db \"SELECT COUNT\\(*\\) as total, SUM\\(CASE WHEN barcode IS NOT NULL AND barcode != '''' THEN 1 ELSE 0 END\\) as with_barcode FROM products WHERE is_active = 1;\")",
+      "WebSearch",
+      "Bash(netstat -ano)",
+      "Bash(node -e \"const os = require\\(''os''\\); const ifaces = os.networkInterfaces\\(\\); console.log\\(typeof ifaces, Object.keys\\(ifaces\\).length\\)\")"
     ]
   }
 }

@@ -8,11 +8,3 @@ export const suppliersApi = {
   delete: (id: string) => api.delete(`/suppliers/${id}`),
 };
 
-export const driversApi = {
-  getAll: () => api.get('/drivers'),
-  getById: (id: string) => api.get(`/drivers/${id}`),
-  create: (data: any) => api.post('/drivers', data),
-  update: (id: string, data: any) => api.put(`/drivers/${id}`, data),
-  delete: (id: string) => api.delete(`/drivers/${id}`),
-  toggleAvailability: (id: string) => api.patch(`/drivers/${id}/availability`),
-};

@@ -9,7 +9,7 @@ export async function up(db: DatabaseWrapper): Promise<void> {
 
   // Insert default settings
   const defaults = {
-    store_name: 'Meu Estabelecimento',
+    store_name: 'Netrix System',
     store_address: '',
     store_phone: '',
     opening_hours: 'Seg-Sáb: 09:00-22:00',

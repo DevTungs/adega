@@ -106,7 +106,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
+      <h1 className="text-2xl font-bold text-white">Configurações</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Store Settings */}
@@ -117,19 +117,19 @@ export default function Settings() {
           </div>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Nome</label>
               <input type="text" value={settings.store_name} onChange={(e) => update('store_name', e.target.value)} className="input w-full" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Endereço</label>
               <input type="text" value={settings.store_address} onChange={(e) => update('store_address', e.target.value)} className="input w-full" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Telefone</label>
               <input type="text" value={settings.store_phone} onChange={(e) => update('store_phone', e.target.value)} className="input w-full" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Horário</label>
               <input type="text" value={settings.opening_hours} onChange={(e) => update('opening_hours', e.target.value)} className="input w-full" />
             </div>
           </div>
@@ -143,15 +143,15 @@ export default function Settings() {
           </div>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Taxa de Entrega (R$)</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Taxa de Entrega (R$)</label>
               <input type="number" step="0.01" value={settings.delivery_fee} onChange={(e) => update('delivery_fee', e.target.value)} className="input w-full" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Pedido Mínimo (R$)</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Pedido Mínimo (R$)</label>
               <input type="number" step="0.01" value={settings.min_order} onChange={(e) => update('min_order', e.target.value)} className="input w-full" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Raio de Entrega (km)</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Raio de Entrega (km)</label>
               <input type="number" value={settings.delivery_radius} onChange={(e) => update('delivery_radius', e.target.value)} className="input w-full" />
             </div>
           </div>
@@ -165,7 +165,7 @@ export default function Settings() {
           </div>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Tipo</label>
               <select value={settings.printer_type} onChange={(e) => update('printer_type', e.target.value)} className="input w-full">
                 <option value="usb">USB / Local</option>
                 <option value="network">Rede (TCP/IP)</option>
@@ -174,7 +174,7 @@ export default function Settings() {
             {settings.printer_type === 'usb' ? (
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-gray-700">Impressora</label>
+                  <label className="block text-sm font-medium text-gray-300">Impressora</label>
                   <button
                     type="button"
                     onClick={loadPrinters}
@@ -196,23 +196,23 @@ export default function Settings() {
                   ))}
                 </select>
                 {printers.length === 0 && !loadingPrinters && (
-                  <p className="text-xs text-gray-500 mt-1">Nenhuma impressora encontrada. Clique em "Atualizar lista".</p>
+                  <p className="text-xs text-gray-400 mt-1">Nenhuma impressora encontrada. Clique em "Atualizar lista".</p>
                 )}
               </div>
             ) : (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">IP da Impressora</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">IP da Impressora</label>
                   <input type="text" value={settings.printer_ip} onChange={(e) => update('printer_ip', e.target.value)} className="input w-full" placeholder="192.168.1.100" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Porta</label>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Porta</label>
                   <input type="number" value={settings.printer_port} onChange={(e) => update('printer_port', e.target.value)} className="input w-full" placeholder="9100" />
                 </div>
               </>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Largura do Cupom (caracteres)</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Largura do Cupom (caracteres)</label>
               <select value={settings.printer_width} onChange={(e) => update('printer_width', e.target.value)} className="input w-full">
                 <option value="32">32 (58mm)</option>
                 <option value="48">48 (80mm)</option>
@@ -230,15 +230,15 @@ export default function Settings() {
           <div className="space-y-3">
             <label className="flex items-center gap-3">
               <input type="checkbox" checked={settings.notify_sound === 'true'} onChange={(e) => update('notify_sound', e.target.checked ? 'true' : 'false')} className="rounded" />
-              <span className="text-sm text-gray-700">Som de notificação</span>
+              <span className="text-sm text-gray-300">Som de notificação</span>
             </label>
             <label className="flex items-center gap-3">
               <input type="checkbox" checked={settings.notify_orders === 'true'} onChange={(e) => update('notify_orders', e.target.checked ? 'true' : 'false')} className="rounded" />
-              <span className="text-sm text-gray-700">Notificar novos pedidos</span>
+              <span className="text-sm text-gray-300">Notificar novos pedidos</span>
             </label>
             <label className="flex items-center gap-3">
               <input type="checkbox" checked={settings.notify_whatsapp === 'true'} onChange={(e) => update('notify_whatsapp', e.target.checked ? 'true' : 'false')} className="rounded" />
-              <span className="text-sm text-gray-700">Notificar mensagens WhatsApp</span>
+              <span className="text-sm text-gray-300">Notificar mensagens WhatsApp</span>
             </label>
           </div>
         </div>

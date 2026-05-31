@@ -32,19 +32,19 @@ export default function OrderDetails({ order, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-auto">
+      <div className="bg-gray-900 rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-auto">
         <div className="flex items-center justify-between p-6 border-b">
           <h3 className="text-lg font-bold">Pedido #{order.order_number}</h3>
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
               disabled={printing}
-              className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900"
+              className="p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white"
               title="Imprimir cupom"
             >
               <Printer size={20} className={printing ? 'animate-pulse' : ''} />
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+            <button onClick={onClose} className="p-2 hover:bg-gray-800 rounded-lg">
               <X size={20} />
             </button>
           </div>
@@ -56,13 +56,13 @@ export default function OrderDetails({ order, onClose }: Props) {
           </div>
 
           <div>
-            <h4 className="font-medium text-gray-700 mb-2">Cliente</h4>
-            <p className="text-gray-900">{order.customer_name || 'N/A'}</p>
+            <h4 className="font-medium text-gray-300 mb-2">Cliente</h4>
+            <p className="text-white">{order.customer_name || 'N/A'}</p>
             <p className="text-sm text-gray-500">{order.customer_phone}</p>
           </div>
 
           <div>
-            <h4 className="font-medium text-gray-700 mb-2">Itens</h4>
+            <h4 className="font-medium text-gray-300 mb-2">Itens</h4>
             <div className="space-y-2">
               {order.items?.map((item) => (
                 <div key={item.id} className="flex justify-between text-sm">
@@ -98,22 +98,22 @@ export default function OrderDetails({ order, onClose }: Props) {
 
           {order.delivery_address && (
             <div>
-              <h4 className="font-medium text-gray-700 mb-1">Endereço</h4>
-              <p className="text-sm text-gray-600">{order.delivery_address}</p>
+              <h4 className="font-medium text-gray-300 mb-1">Endereço</h4>
+              <p className="text-sm text-gray-400">{order.delivery_address}</p>
             </div>
           )}
 
           {order.payment_method && (
             <div>
-              <h4 className="font-medium text-gray-700 mb-1">Pagamento</h4>
-              <p className="text-sm text-gray-600">{PAYMENT_LABELS[order.payment_method] || order.payment_method}</p>
+              <h4 className="font-medium text-gray-300 mb-1">Pagamento</h4>
+              <p className="text-sm text-gray-400">{PAYMENT_LABELS[order.payment_method] || order.payment_method}</p>
             </div>
           )}
 
           {order.notes && (
             <div>
-              <h4 className="font-medium text-gray-700 mb-1">Observações</h4>
-              <p className="text-sm text-gray-600">{order.notes}</p>
+              <h4 className="font-medium text-gray-300 mb-1">Observações</h4>
+              <p className="text-sm text-gray-400">{order.notes}</p>
             </div>
           )}
         </div>

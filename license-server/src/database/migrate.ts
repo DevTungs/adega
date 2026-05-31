@@ -67,6 +67,7 @@ async function migrate() {
       plan_id VARCHAR(36) NOT NULL,
       status ENUM('active','expired','blocked','pending') DEFAULT 'pending',
       machine_fingerprint VARCHAR(255),
+      max_machines INT NOT NULL DEFAULT 1,
       activated_at DATETIME,
       expires_at DATETIME NOT NULL,
       last_validated_at DATETIME,
@@ -89,7 +90,7 @@ async function migrate() {
       result ENUM('success','failed') NOT NULL,
       message TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (license_id) REFERENCES licenses(id)
+      FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE
     )
   `);
 
@@ -108,12 +109,45 @@ async function migrate() {
     )
   `);
 
+  await conn.execute(`
+    CREATE TABLE IF NOT EXISTS license_machines (
+      id VARCHAR(36) PRIMARY KEY,
+      license_id VARCHAR(36) NOT NULL,
+      machine_fingerprint VARCHAR(255) NOT NULL,
+      machine_name VARCHAR(255),
+      activated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at DATETIME,
+      is_active TINYINT(1) DEFAULT 1,
+      FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE,
+      UNIQUE KEY uk_license_fingerprint (license_id, machine_fingerprint)
+    )
+  `);
+
   // Indexes
   await conn.execute('CREATE INDEX IF NOT EXISTS idx_licenses_key ON licenses(license_key)');
   await conn.execute('CREATE INDEX IF NOT EXISTS idx_licenses_client ON licenses(client_id)');
   await conn.execute('CREATE INDEX IF NOT EXISTS idx_licenses_status ON licenses(status)');
   await conn.execute('CREATE INDEX IF NOT EXISTS idx_licenses_expires ON licenses(expires_at)');
   await conn.execute('CREATE INDEX IF NOT EXISTS idx_activations_license ON license_activations(license_id)');
+  await conn.execute('CREATE INDEX IF NOT EXISTS idx_machines_license ON license_machines(license_id)');
+
+  // Add max_machines_override to clients if not exists (safe with try/catch)
+  try {
+    await conn.execute('ALTER TABLE clients ADD COLUMN max_machines_override INT DEFAULT NULL');
+  } catch { /* column already exists */ }
+
+  // Add max_machines to plans if not exists
+  try {
+    await conn.execute('ALTER TABLE plans ADD COLUMN max_machines INT NOT NULL DEFAULT 1');
+  } catch { /* column already exists */ }
+
+  // Add GTIN API credentials to clients
+  try {
+    await conn.execute('ALTER TABLE clients ADD COLUMN gtin_username VARCHAR(255) DEFAULT NULL');
+  } catch { /* column already exists */ }
+  try {
+    await conn.execute('ALTER TABLE clients ADD COLUMN gtin_password VARCHAR(255) DEFAULT NULL');
+  } catch { /* column already exists */ }
 
   console.log('[Migrate] Done!');
   await conn.end();

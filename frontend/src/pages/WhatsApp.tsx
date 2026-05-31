@@ -155,7 +155,7 @@ export default function WhatsApp() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">WhatsApp Bot</h1>
+      <h1 className="text-2xl font-bold text-white">WhatsApp Bot</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Connection Status */}
@@ -167,7 +167,7 @@ export default function WhatsApp() {
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${st.color}`}></div>
-              <span className="text-sm text-gray-600">{st.label}</span>
+              <span className="text-sm text-gray-400">{st.label}</span>
             </div>
 
             {status === 'disconnected' ? (
@@ -183,7 +183,7 @@ export default function WhatsApp() {
             {/* Bot toggle */}
             <div className="border-t pt-3">
               <button onClick={handleToggleBot} className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg ${
-                botActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                botActive ? 'bg-green-100 text-green-700' : 'bg-gray-800 text-gray-400'
               }`}>
                 {botActive ? <Power size={18} /> : <PowerOff size={18} />}
                 {botActive ? 'Bot Ativo' : 'Bot Inativo'}
@@ -249,12 +249,12 @@ export default function WhatsApp() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Mensagens Recentes</h2>
-          <button onClick={() => setMessages([])} className="p-2 hover:bg-gray-100 rounded">
-            <RefreshCw size={18} className="text-gray-500" />
+          <button onClick={() => setMessages([])} className="p-2 hover:bg-gray-800 rounded">
+            <RefreshCw size={18} className="text-gray-400" />
           </button>
         </div>
         {messages.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-8">
+          <p className="text-sm text-gray-400 text-center py-8">
             Nenhuma mensagem ainda. Conecte o WhatsApp para ver as mensagens.
           </p>
         ) : (
@@ -264,9 +264,9 @@ export default function WhatsApp() {
                 <div className={`px-3 py-2 rounded-lg max-w-xs ${
                   msg.direction === 'out'
                     ? 'bg-primary-100 text-primary-900'
-                    : 'bg-gray-100 text-gray-900'
+                    : 'bg-gray-800 text-white'
                 }`}>
-                  <div className="text-xs text-gray-500 mb-1">
+                  <div className="text-xs text-gray-400 mb-1">
                     {msg.direction === 'out' ? '→' : '←'} {msg.phone} - {new Date(msg.time).toLocaleTimeString('pt-BR')}
                   </div>
                   <div className="text-sm">{msg.message}</div>

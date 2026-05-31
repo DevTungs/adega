@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { query, queryOne } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { validateBody } from '../middleware/validate';
+import { asyncHandler } from '../middleware/async-handler';
 
 const router = Router();
 
@@ -17,19 +18,20 @@ const clientUserSchema = z.object({
 });
 
 // List all client users
-router.get('/', authMiddleware, async (_req: AuthRequest, res: Response) => {
+router.get('/', authMiddleware, asyncHandler(async (_req: AuthRequest, res: Response) => {
   const users = await query(
     `SELECT cu.id, cu.client_id, cu.username, cu.name, cu.role, cu.is_active, cu.created_at, cu.updated_at,
             c.name as client_name
      FROM client_users cu
      LEFT JOIN clients c ON c.id = cu.client_id
+     WHERE cu.is_active = 1
      ORDER BY cu.created_at DESC`
   );
   res.json({ success: true, data: users });
-});
+}));
 
 // Get client user by ID
-router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.get('/:id', authMiddleware, asyncHandler(async (req: AuthRequest, res: Response) => {
   const user = await queryOne(
     `SELECT cu.id, cu.client_id, cu.username, cu.name, cu.role, cu.is_active, cu.created_at, cu.updated_at,
             c.name as client_name
@@ -40,10 +42,10 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   );
   if (!user) return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Usuario nao encontrado' });
   res.json({ success: true, data: user });
-});
+}));
 
 // Create client user
-router.post('/', authMiddleware, validateBody(clientUserSchema), async (req: Request, res: Response) => {
+router.post('/', authMiddleware, validateBody(clientUserSchema), asyncHandler(async (req: Request, res: Response) => {
   const { client_id, username, password, name, role } = req.body;
 
   if (!password) {
@@ -80,10 +82,10 @@ router.post('/', authMiddleware, validateBody(clientUserSchema), async (req: Req
     [id]
   );
   res.status(201).json({ success: true, data: user });
-});
+}));
 
 // Update client user
-router.put('/:id', authMiddleware, validateBody(clientUserSchema), async (req: Request, res: Response) => {
+router.put('/:id', authMiddleware, validateBody(clientUserSchema), asyncHandler(async (req: Request, res: Response) => {
   const { client_id, username, password, name, role } = req.body;
   const { id } = req.params;
 
@@ -117,14 +119,14 @@ router.put('/:id', authMiddleware, validateBody(clientUserSchema), async (req: R
     [id]
   );
   res.json({ success: true, data: user });
-});
+}));
 
 // Delete client user (soft delete)
-router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+router.delete('/:id', authMiddleware, asyncHandler(async (req: AuthRequest, res: Response) => {
   const user = await queryOne('SELECT * FROM client_users WHERE id = ?', [req.params.id]);
   if (!user) return res.status(404).json({ success: false, error: 'NOT_FOUND', message: 'Usuario nao encontrado' });
   await query('UPDATE client_users SET is_active = 0, updated_at = NOW() WHERE id = ?', [req.params.id]);
   res.json({ success: true, message: 'Usuario removido' });
-});
+}));
 
 export default router;

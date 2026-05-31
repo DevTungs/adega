@@ -8,7 +8,7 @@ interface Props {
 
 export default function OrderStatusBadge({ status }: Props) {
   return (
-    <Badge className={STATUS_COLORS[status] || 'bg-gray-100 text-gray-800'}>
+    <Badge className={STATUS_COLORS[status] || 'bg-gray-800 text-gray-200'}>
       {STATUS_LABELS[status] || status}
     </Badge>
   );

@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { productsApi, categoriesApi } from '../api/products';
 import { ordersApi } from '../api/orders';
 import { cashRegisterApi } from '../api/cash-register';
 import { Product, Category } from '../types';
 import { formatCurrency } from '../utils/format';
-import { Search, Plus, Minus, Trash2, ShoppingCart, X, CreditCard, Banknote, Smartphone, Wallet, Barcode, ScanBarcode } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingCart, X, CreditCard, Banknote, Smartphone, Wallet, ScanBarcode, Package } from 'lucide-react';
 import toast from 'react-hot-toast';
 import CashRegisterModal from '../components/cash-register/CashRegisterModal';
 
@@ -24,8 +24,6 @@ const PAYMENT_METHODS = [
 export default function PDV() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<string>('cash');
   const [cashRegisterOpen, setCashRegisterOpen] = useState<boolean>(false);
@@ -33,25 +31,34 @@ export default function PDV() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastOrderNumber, setLastOrderNumber] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [barcodeInput, setBarcodeInput] = useState('');
-  const [barcodeLoading, setBarcodeLoading] = useState(false);
-  const barcodeRef = useRef<HTMLInputElement>(null);
+
+  // Search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     loadData();
     checkCashRegister();
   }, []);
 
-  // Keep barcode input focused for scanner hardware
+  // F2 to focus search
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
         e.preventDefault();
-        barcodeRef.current?.focus();
+        openSearch();
+      }
+      if (e.key === 'Escape') {
+        setSearchOpen(false);
+        setSearchQuery('');
       }
     };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, []);
 
   const loadData = async () => {
@@ -60,7 +67,8 @@ export default function PDV() {
         productsApi.getCatalog(),
         categoriesApi.getAll(),
       ]);
-      setProducts(prodRes.data.data.flatMap((g: any) => g.products || []));
+      const allProducts = prodRes.data.data.flatMap((g: any) => g.products || []);
+      setProducts(allProducts);
       setCategories(catRes.data.data);
     } catch {
       toast.error('Erro ao carregar produtos');
@@ -71,69 +79,82 @@ export default function PDV() {
     try {
       const { data } = await cashRegisterApi.getCurrent();
       setCashRegisterOpen(!!data.data);
-    } catch {}
+    } catch {
+      setCashRegisterOpen(false);
+    }
   };
 
-  const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      if (p.is_active !== 1) return false;
-      if (categoryFilter && p.category_id !== categoryFilter) return false;
-      if (search) {
-        const s = search.toLowerCase();
-        return p.name.toLowerCase().includes(s) || p.brand?.toLowerCase().includes(s) || p.barcode?.includes(s);
+  const openSearch = () => {
+    setSearchOpen(true);
+    setSearchQuery('');
+    setSearchResults([]);
+    setTimeout(() => searchRef.current?.focus(), 50);
+  };
+
+  // Normalize text for search: remove accents, lowercase
+  const normalizeText = (text: string) =>
+    text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const handleSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      const q = normalizeText(query.trim());
+      // Search in memory first (instant)
+      const localResults = products.filter(p =>
+        normalizeText(p.name).includes(q) ||
+        normalizeText(p.brand || '').includes(q) ||
+        (p.barcode || '').includes(query.trim()) ||
+        normalizeText(p.description || '').includes(q)
+      ).slice(0, 20);
+      setSearchResults(localResults);
+    }, 150);
+  }, [products]);
+
+  const handleSearchBarcode = async (barcode: string) => {
+    if (!barcode.trim()) return;
+    setSearchLoading(true);
+    try {
+      const result = await productsApi.searchByBarcode(barcode.trim());
+      if (result.found && result.source === 'local') {
+        addToCart(result.product);
+        setSearchOpen(false);
+        setSearchQuery('');
+        return;
       }
-      return true;
-    });
-  }, [products, search, categoryFilter]);
+      if (result.found && result.source === 'api') {
+        toast(`${result.product.name} - não cadastrado. Cadastre em Produtos.`, { icon: '📋' });
+      } else {
+        toast.error(result.error || 'Produto não encontrado');
+      }
+    } catch {
+      toast.error('Erro ao buscar código de barras');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
 
   const addToCart = (product: Product) => {
+    if (product.stock !== undefined && product.stock <= 0) {
+      toast.error('Produto sem estoque');
+      return;
+    }
     setCart(prev => {
       const existing = prev.find(i => i.product.id === product.id);
       if (existing) {
-        return prev.map(i => i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
+        return prev.map(i =>
+          i.product.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
+        );
       }
       return [...prev, { product, quantity: 1 }];
     });
-  };
-
-  const handleBarcodeSearch = async () => {
-    const code = barcodeInput.trim();
-    if (!code) return;
-
-    setBarcodeLoading(true);
-    try {
-      // First check local products by barcode
-      const localMatch = products.find(p => p.barcode === code);
-      if (localMatch) {
-        addToCart(localMatch);
-        toast.success(`${localMatch.name} adicionado!`);
-        setBarcodeInput('');
-        return;
-      }
-
-      // If not found locally, try the API (local DB + Open Food Facts)
-      const { data } = await productsApi.searchByBarcode(code);
-      if (data.data?.found) {
-        const product = data.data.product;
-        if (data.data.source === 'api') {
-          // Product found via Open Food Facts - reload catalog to include it
-          toast.success(`${product.name} encontrado e cadastrado!`);
-          await loadData();
-        } else {
-          toast.success(`${product.name} adicionado!`);
-        }
-        addToCart(product);
-        setBarcodeInput('');
-      } else {
-        toast.error('Produto não encontrado');
-        setBarcodeInput('');
-      }
-    } catch {
-      toast.error('Erro ao buscar produto');
-    } finally {
-      setBarcodeLoading(false);
-      barcodeRef.current?.focus();
-    }
+    toast.success(`${product.name} adicionado`);
   };
 
   const updateQuantity = (productId: string, delta: number) => {
@@ -150,12 +171,15 @@ export default function PDV() {
 
   const clearCart = () => setCart([]);
 
-  const subtotal = cart.reduce((sum, i) => {
-    const price = i.product.promo_price || i.product.price;
-    return sum + price * i.quantity;
-  }, 0);
+  const subtotal = useMemo(() =>
+    cart.reduce((sum, i) => {
+      const price = i.product.promo_price ?? i.product.price;
+      return sum + price * i.quantity;
+    }, 0),
+    [cart]
+  );
 
-  const totalItems = cart.reduce((sum, i) => sum + i.quantity, 0);
+  const totalItems = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
 
   const handleFinishSale = async () => {
     if (cart.length === 0) return toast.error('Adicione itens ao carrinho');
@@ -165,6 +189,7 @@ export default function PDV() {
         customer_id: 'pdv-walk-in',
         items: cart.map(i => ({ product_id: i.product.id, quantity: i.quantity })),
         payment_method: paymentMethod,
+        order_type: 'pdv',
         notes: 'Venda PDV - Balcão',
       });
       setLastOrderNumber(data.data.order_number);
@@ -179,199 +204,272 @@ export default function PDV() {
   };
 
   return (
-    <div className="h-[calc(100vh-2rem)] flex flex-col">
+    <div className="h-[calc(100vh-2rem)] flex flex-col gap-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">PDV - Ponto de Venda</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-white">PDV</h1>
+          <span className="text-sm text-gray-400">Ponto de Venda</span>
+        </div>
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowCashModal(true)}
-            className={`btn-secondary flex items-center gap-2 ${cashRegisterOpen ? 'text-green-600' : 'text-red-600'}`}
+            className={`btn-secondary flex items-center gap-2 text-sm ${cashRegisterOpen ? 'text-green-600' : 'text-red-600'}`}
           >
-            <Wallet size={18} />
+            <Wallet size={16} />
             {cashRegisterOpen ? 'Caixa Aberto' : 'Caixa Fechado'}
           </button>
         </div>
       </div>
 
-      {/* Barcode Scanner */}
-      <div className="mb-4">
+      {/* Search Bar */}
+      <div className="relative">
         <div className="flex gap-2">
-          <div className="relative flex-1 max-w-md">
-            <ScanBarcode size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <div className="relative flex-1">
+            <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
-              ref={barcodeRef}
               type="text"
-              value={barcodeInput}
-              onChange={e => setBarcodeInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleBarcodeSearch(); }}
-              placeholder="Escanear código de barras... (F2)"
-              className="input pl-11 pr-4 py-2.5 text-lg font-mono tracking-wider"
-              disabled={barcodeLoading}
-              autoFocus
+              value={searchOpen ? searchQuery : ''}
+              onFocus={openSearch}
+              onChange={e => handleSearch(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && searchQuery.trim()) {
+                  // Try barcode first if it looks like a number
+                  if (/^\d+$/.test(searchQuery.trim())) {
+                    handleSearchBarcode(searchQuery.trim());
+                  }
+                }
+              }}
+              placeholder="Buscar produto por nome, marca ou código de barras... (F2)"
+              className="w-full pl-12 pr-4 py-3 text-lg bg-gray-900 border-2 border-gray-800 rounded-xl focus:border-primary-500 focus:outline-none transition-colors"
             />
+            {searchOpen && (
+              <button
+                onClick={() => { setSearchOpen(false); setSearchQuery(''); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            )}
           </div>
           <button
-            onClick={handleBarcodeSearch}
-            disabled={barcodeLoading || !barcodeInput.trim()}
-            className="btn-primary px-4 flex items-center gap-2 disabled:opacity-50"
+            onClick={() => {
+              if (searchQuery.trim() && /^\d+$/.test(searchQuery.trim())) {
+                handleSearchBarcode(searchQuery.trim());
+              } else {
+                openSearch();
+              }
+            }}
+            disabled={searchLoading}
+            className="btn-primary px-6 flex items-center gap-2 text-lg disabled:opacity-50"
           >
-            <Barcode size={18} />
-            {barcodeLoading ? 'Buscando...' : 'Buscar'}
+            <ScanBarcode size={20} />
+            {searchLoading ? 'Buscando...' : 'Buscar'}
           </button>
         </div>
-      </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex gap-4 min-h-0">
-        {/* LEFT - Products */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Search + Filter */}
-          <div className="flex gap-3 mb-3">
-            <div className="flex-1 relative">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar produto por nome ou marca..."
-                className="input pl-10"
-              />
-            </div>
-            <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="input w-auto">
-              <option value="">Todas categorias</option>
-              {categories.filter(c => c.is_active).map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Product Grid */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-              {filteredProducts.map(product => {
-                const price = product.promo_price || product.price;
-                const inCart = cart.find(i => i.product.id === product.id);
-                return (
-                  <button
-                    key={product.id}
-                    onClick={() => addToCart(product)}
-                    className={`relative bg-white border-2 rounded-xl p-3 text-left transition-all hover:shadow-md active:scale-95 ${inCart ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-primary-300'}`}
-                  >
-                    {inCart && (
-                      <span className="absolute -top-2 -right-2 bg-primary-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
-                        {inCart.quantity}
-                      </span>
-                    )}
-                    {product.image_url ? (
-                      <div className="w-full h-16 mb-2 rounded-lg overflow-hidden bg-gray-100">
-                        <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+        {/* Search Results Popup */}
+        {searchOpen && searchQuery.trim() && (
+          <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 rounded-xl shadow-2xl border border-gray-800 z-50 max-h-[60vh] overflow-y-auto">
+            {searchResults.length > 0 ? (
+              <div className="p-2">
+                <p className="text-xs text-gray-400 px-3 py-1">{searchResults.length} produto(s) encontrado(s)</p>
+                {searchResults.map(product => {
+                  const price = (product.promo_price != null && product.promo_price > 0) ? product.promo_price : product.price;
+                  const inCart = cart.find(i => i.product.id === product.id);
+                  return (
+                    <button
+                      key={product.id}
+                      onClick={() => {
+                        addToCart(product);
+                        setSearchQuery('');
+                        setSearchOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-primary-50 transition-colors text-left"
+                    >
+                      {product.image_url ? (
+                        <img src={product.image_url} alt={product.name} className="w-12 h-12 rounded-lg object-cover bg-gray-800" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center text-lg font-bold text-gray-400">
+                          {product.name.charAt(0)}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-white truncate">{product.name}</p>
+                        <p className="text-sm text-gray-400">
+                          {product.brand && `${product.brand} · `}
+                          {product.barcode && `${product.barcode} · `}
+                          Estoque: {product.stock ?? 0}
+                        </p>
                       </div>
-                    ) : (
-                      <div className="w-full h-16 mb-2 rounded-lg bg-gray-100 flex items-center justify-center text-2xl">
-                        {product.name.charAt(0)}
+                      <div className="text-right">
+                        <p className="font-bold text-primary-600">{formatCurrency(price)}</p>
+                        {inCart && (
+                          <p className="text-xs text-primary-500">{inCart.quantity}x no carrinho</p>
+                        )}
                       </div>
-                    )}
-                    <p className="font-medium text-sm truncate">{product.name}</p>
-                    <p className="text-primary-600 font-bold text-sm">{formatCurrency(price)}</p>
-                    {product.stock <= 5 && product.stock > 0 && (
-                      <p className="text-xs text-orange-500">Estoque: {product.stock}</p>
-                    )}
-                    {product.stock <= 0 && (
-                      <p className="text-xs text-red-500">Sem estoque</p>
-                    )}
-                  </button>
-                );
-              })}
-              {filteredProducts.length === 0 && (
-                <div className="col-span-full text-center py-12 text-gray-400">
-                  Nenhum produto encontrado
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT - Cart */}
-        <div className="w-80 bg-white rounded-xl border flex flex-col">
-          <div className="p-4 border-b flex items-center justify-between">
-            <h2 className="font-bold flex items-center gap-2">
-              <ShoppingCart size={18} /> Carrinho
-            </h2>
-            {cart.length > 0 && (
-              <button onClick={clearCart} className="text-xs text-red-500 hover:text-red-700">Limpar</button>
-            )}
-          </div>
-
-          {/* Cart Items */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {cart.length === 0 ? (
-              <div className="text-center text-gray-400 py-8">
-                <ShoppingCart size={40} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Escaneie um código de barras ou toque nos produtos</p>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
-              cart.map(item => {
-                const price = item.product.promo_price || item.product.price;
-                return (
-                  <div key={item.product.id} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.product.name}</p>
-                      <p className="text-xs text-gray-500">{formatCurrency(price)} cada</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => updateQuantity(item.product.id, -1)} className="w-7 h-7 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center">
-                        <Minus size={14} />
-                      </button>
-                      <span className="w-8 text-center font-medium text-sm">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.product.id, 1)} className="w-7 h-7 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center">
-                        <Plus size={14} />
-                      </button>
-                      <button onClick={() => removeFromCart(item.product.id)} className="w-7 h-7 rounded bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center ml-1">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <div className="text-right min-w-[70px]">
-                      <p className="text-sm font-bold">{formatCurrency(price * item.quantity)}</p>
-                    </div>
-                  </div>
-                );
-              })
+              <div className="p-8 text-center text-gray-400">
+                <Package size={32} className="mx-auto mb-2 opacity-50" />
+                <p>Nenhum produto encontrado para "{searchQuery}"</p>
+                <p className="text-sm mt-1">Tente outro termo ou escaneie o código de barras</p>
+              </div>
             )}
           </div>
+        )}
+      </div>
 
-          {/* Payment Method */}
-          <div className="px-4 py-2 border-t">
-            <p className="text-xs font-medium text-gray-500 mb-2">Forma de Pagamento</p>
-            <div className="grid grid-cols-5 gap-1">
-              {PAYMENT_METHODS.map(pm => (
-                <button
-                  key={pm.value}
-                  onClick={() => setPaymentMethod(pm.value)}
-                  className={`flex flex-col items-center gap-1 p-2 rounded-lg text-xs transition-colors ${paymentMethod === pm.value ? 'bg-primary-100 text-primary-700 border border-primary-300' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
-                >
-                  <pm.icon size={16} />
-                  <span className="truncate w-full text-center">{pm.label}</span>
-                </button>
-              ))}
-            </div>
+      {/* Main Content: Cart */}
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* Cart Header */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <ShoppingCart size={20} className="text-gray-400" />
+            <h2 className="text-lg font-bold text-gray-200">Carrinho</h2>
+            {cart.length > 0 && (
+              <span className="bg-primary-100 text-primary-700 text-sm font-medium px-2 py-0.5 rounded-full">
+                {totalItems} {totalItems === 1 ? 'item' : 'itens'}
+              </span>
+            )}
           </div>
-
-          {/* Total + Finish */}
-          <div className="p-4 border-t space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 text-sm">{totalItems} {totalItems === 1 ? 'item' : 'itens'}</span>
-              <span className="text-2xl font-bold text-primary-600">{formatCurrency(subtotal)}</span>
-            </div>
-            <button
-              onClick={handleFinishSale}
-              disabled={cart.length === 0 || loading}
-              className="btn-primary w-full py-3 text-lg flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {loading ? 'Finalizando...' : 'Finalizar Venda'}
+          {cart.length > 0 && (
+            <button onClick={clearCart} className="text-sm text-red-500 hover:text-red-700 flex items-center gap-1">
+              <Trash2 size={14} /> Limpar carrinho
             </button>
-          </div>
+          )}
         </div>
+
+        {/* Cart Table */}
+        <div className="flex-1 bg-gray-900 rounded-xl border overflow-hidden flex flex-col">
+          {cart.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-gray-400">
+              <div className="text-center">
+                <ShoppingCart size={64} className="mx-auto mb-4 opacity-20" />
+                <p className="text-lg">Carrinho vazio</p>
+                <p className="text-sm mt-1">Busque um produto acima ou escaneie o código de barras</p>
+                <button onClick={openSearch} className="btn-primary mt-4 px-6 py-2">
+                  Buscar produto
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto">
+              <table className="w-full">
+                <thead className="bg-gray-800/50 sticky top-0">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Produto</th>
+                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-400 w-32">Preço</th>
+                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-400 w-40">Quantidade</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-400 w-32">Total</th>
+                    <th className="w-12"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {cart.map(item => {
+                    const price = (item.product.promo_price != null && item.product.promo_price > 0) ? item.product.promo_price : item.product.price;
+                    return (
+                      <tr key={item.product.id} className="hover:bg-gray-800/50">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            {item.product.image_url ? (
+                              <img src={item.product.image_url} alt={item.product.name} className="w-10 h-10 rounded-lg object-cover bg-gray-800" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-sm font-bold text-gray-400">
+                                {item.product.name.charAt(0)}
+                              </div>
+                            )}
+                            <div>
+                              <p className="font-medium text-white">{item.product.name}</p>
+                              {item.product.brand && <p className="text-xs text-gray-400">{item.product.brand}</p>}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-400">
+                          {formatCurrency(price)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => updateQuantity(item.product.id, -1)}
+                              className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                            >
+                              <Minus size={16} />
+                            </button>
+                            <span className="w-10 text-center font-bold text-lg">{item.quantity}</span>
+                            <button
+                              onClick={() => updateQuantity(item.product.id, 1)}
+                              className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                            >
+                              <Plus size={16} />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-white">
+                          {formatCurrency(price * item.quantity)}
+                        </td>
+                        <td className="px-2 py-3">
+                          <button
+                            onClick={() => removeFromCart(item.product.id)}
+                            className="w-8 h-8 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom: Payment + Total */}
+        {cart.length > 0 && (
+          <div className="mt-4 bg-gray-900 rounded-xl border p-4">
+            <div className="flex items-center gap-6">
+              {/* Payment Methods */}
+              <div className="flex-1">
+                <p className="text-xs font-medium text-gray-400 mb-2">Forma de Pagamento</p>
+                <div className="flex gap-2">
+                  {PAYMENT_METHODS.map(pm => (
+                    <button
+                      key={pm.value}
+                      onClick={() => setPaymentMethod(pm.value)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        paymentMethod === pm.value
+                          ? 'bg-primary-600 text-white shadow-sm'
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-200'
+                      }`}
+                    >
+                      <pm.icon size={16} />
+                      {pm.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Total + Finish */}
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <p className="text-sm text-gray-400">Total</p>
+                  <p className="text-3xl font-bold text-primary-600">{formatCurrency(subtotal)}</p>
+                </div>
+                <button
+                  onClick={handleFinishSale}
+                  disabled={loading}
+                  className="btn-primary px-8 py-4 text-lg font-bold flex items-center gap-2 disabled:opacity-50"
+                >
+                  {loading ? 'Finalizando...' : 'Finalizar Venda'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Cash Register Modal */}
@@ -385,15 +483,27 @@ export default function PDV() {
       {/* Success Modal */}
       {showSuccess && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          <div className="bg-gray-900 rounded-2xl shadow-xl p-8 w-full max-w-sm text-center">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-            <h3 className="text-xl font-bold mb-2">Venda Finalizada!</h3>
-            {lastOrderNumber && <p className="text-gray-500 mb-4">Pedido #{lastOrderNumber}</p>}
-            <div className="flex gap-2">
-              <button onClick={() => { setShowSuccess(false); setBarcodeInput(''); barcodeRef.current?.focus(); }} className="btn-primary flex-1">Nova Venda</button>
-              <button onClick={() => setShowSuccess(false)} className="btn-secondary flex-1">Fechar</button>
+            <h3 className="text-2xl font-bold mb-2">Venda Finalizada!</h3>
+            {lastOrderNumber && <p className="text-gray-400 mb-6">Pedido #{lastOrderNumber}</p>}
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowSuccess(false); openSearch(); }}
+                className="btn-primary flex-1 py-3"
+              >
+                Nova Venda
+              </button>
+              <button
+                onClick={() => setShowSuccess(false)}
+                className="btn-secondary flex-1 py-3"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>

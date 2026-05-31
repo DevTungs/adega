@@ -39,7 +39,7 @@ export default function Customers() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
+        <h1 className="text-2xl font-bold text-white">Clientes</h1>
       </div>
 
       <div className="relative">
@@ -60,28 +60,28 @@ export default function Customers() {
       ) : (
         <div className="card overflow-hidden p-0">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-800/50 border-b border-gray-800">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Telefone</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pedidos</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Gasto</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Último Pedido</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Cliente</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Telefone</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Pedidos</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Total Gasto</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Último Pedido</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.map((customer) => (
-                <tr key={customer.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">{customer.name || 'Sem nome'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{formatPhone(customer.phone)}</td>
+                <tr key={customer.id} className="hover:bg-gray-800/50">
+                  <td className="px-4 py-3 font-medium text-white">{customer.name || 'Sem nome'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400">{formatPhone(customer.phone)}</td>
                   <td className="px-4 py-3 text-sm">{customer.total_orders}</td>
                   <td className="px-4 py-3 font-medium">{formatCurrency(customer.total_spent)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
+                  <td className="px-4 py-3 text-sm text-gray-400">
                     {customer.last_order_at ? formatDateTime(customer.last_order_at) : '-'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button className="p-1 text-gray-400 hover:text-gray-600">
+                    <button className="p-1 text-gray-400 hover:text-gray-400">
                       <Eye size={18} />
                     </button>
                   </td>

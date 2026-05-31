@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { validateBody } from '../middleware/validate';
 import { clientAuthService } from '../services/client-auth.service';
+import { asyncHandler } from '../middleware/async-handler';
 
 const router = Router();
 
@@ -11,7 +12,7 @@ const loginSchema = z.object({
 });
 
 // Login for app users (client-facing, no JWT — authenticated by credentials)
-router.post('/login', validateBody(loginSchema), async (req: Request, res: Response) => {
+router.post('/login', validateBody(loginSchema), asyncHandler(async (req: Request, res: Response) => {
   const { username, password } = req.body;
   const user = await clientAuthService.login(username, password);
 
@@ -20,6 +21,6 @@ router.post('/login', validateBody(loginSchema), async (req: Request, res: Respo
   }
 
   res.json({ success: true, data: user });
-});
+}));
 
 export default router;

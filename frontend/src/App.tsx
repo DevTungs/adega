@@ -4,10 +4,11 @@ import { useAuthStore } from './stores/authStore';
 import { useEffect, useState } from 'react';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
+import Setup from './pages/Setup';
 import Dashboard from './pages/Dashboard';
-import Orders from './pages/Orders';
+import DeliveryOrders from './pages/DeliveryOrders';
+import BalcaoOrders from './pages/BalcaoOrders';
 import Products from './pages/Products';
-import Categories from './pages/Categories';
 import Customers from './pages/Customers';
 import Settings from './pages/Settings';
 import WhatsApp from './pages/WhatsApp';
@@ -15,10 +16,10 @@ import Messages from './pages/Messages';
 import License from './pages/License';
 import PDV from './pages/PDV';
 import Reports from './pages/Reports';
-import StockMovements from './pages/StockMovements';
 import Suppliers from './pages/Suppliers';
-import Drivers from './pages/Drivers';
+import Users from './pages/Users';
 import UpdateToast from './components/UpdateToast';
+import api from './api/client';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
@@ -29,13 +30,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   const { loadUser, token } = useAuthStore();
   const [loading, setLoading] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
 
   useEffect(() => {
-    if (token) {
-      loadUser().finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+    // Check if setup is needed
+    api.get('/setup/status').then(({ data }) => {
+      if (data.data?.needsSetup) {
+        setNeedsSetup(true);
+        setLoading(false);
+      } else if (token) {
+        loadUser().finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
+    }).catch(() => {
+      // If setup check fails, try normal auth flow
+      if (token) {
+        loadUser().finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
+    });
   }, [token, loadUser]);
 
   if (loading) {
@@ -51,31 +66,40 @@ export default function App() {
       <Toaster position="top-right" />
       <UpdateToast />
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Dashboard />} />
-          <Route path="orders" element={<Orders />} />
-          <Route path="pdv" element={<PDV />} />
-          <Route path="products" element={<Products />} />
-          <Route path="categories" element={<Categories />} />
-          <Route path="customers" element={<Customers />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="stock" element={<StockMovements />} />
-          <Route path="suppliers" element={<Suppliers />} />
-          <Route path="drivers" element={<Drivers />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="whatsapp" element={<WhatsApp />} />
-          <Route path="messages" element={<Messages />} />
-          <Route path="license" element={<License />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {needsSetup && (
+          <Route path="/setup" element={<Setup />} />
+        )}
+        {needsSetup && (
+          <Route path="*" element={<Navigate to="/setup" replace />} />
+        )}
+        {!needsSetup && (
+          <>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Layout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Dashboard />} />
+              <Route path="delivery-orders" element={<DeliveryOrders />} />
+              <Route path="balcao-orders" element={<BalcaoOrders />} />
+              <Route path="pdv" element={<PDV />} />
+              <Route path="products" element={<Products />} />
+              <Route path="customers" element={<Customers />} />
+              <Route path="reports" element={<Reports />} />
+              <Route path="suppliers" element={<Suppliers />} />
+              <Route path="users" element={<Users />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="whatsapp" element={<WhatsApp />} />
+              <Route path="messages" element={<Messages />} />
+              <Route path="license" element={<License />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </>
+        )}
       </Routes>
     </BrowserRouter>
   );

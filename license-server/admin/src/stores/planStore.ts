@@ -7,6 +7,7 @@ export interface Plan {
   description: string | null;
   duration_days: number;
   grace_days: number;
+  max_machines: number;
   price: number;
   is_active: number;
   created_at: string;
@@ -17,8 +18,8 @@ interface PlanState {
   plans: Plan[];
   isLoading: boolean;
   fetchAll: () => Promise<void>;
-  create: (data: { name: string; description?: string; duration_days: number; grace_days: number; price: number }) => Promise<Plan>;
-  update: (id: string, data: { name: string; description?: string; duration_days: number; grace_days: number; price: number }) => Promise<Plan>;
+  create: (data: { name: string; description?: string; duration_days: number; grace_days: number; price: number; max_machines?: number }) => Promise<Plan>;
+  update: (id: string, data: { name: string; description?: string; duration_days: number; grace_days: number; price: number; max_machines?: number }) => Promise<Plan>;
   remove: (id: string) => Promise<void>;
 }
 

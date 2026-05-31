@@ -32,12 +32,12 @@ export default function UpdateToast() {
         progressToastId = toast.custom(
           (t) => (
             <div
-              className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-white shadow-lg rounded-lg p-4 border border-gray-200 min-w-[280px]`}
+              className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-gray-900 shadow-lg rounded-lg p-4 border border-gray-800 min-w-[280px]`}
             >
-              <p className="text-sm font-medium text-gray-700 mb-2">
+              <p className="text-sm font-medium text-gray-300 mb-2">
                 Baixando atualizacao...
               </p>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full bg-gray-700 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${data.percent}%` }}
@@ -53,12 +53,12 @@ export default function UpdateToast() {
         toast.custom(
           (t) => (
             <div
-              className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-white shadow-lg rounded-lg p-4 border border-gray-200 min-w-[280px]`}
+              className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-gray-900 shadow-lg rounded-lg p-4 border border-gray-800 min-w-[280px]`}
             >
-              <p className="text-sm font-medium text-gray-700 mb-2">
+              <p className="text-sm font-medium text-gray-300 mb-2">
                 Baixando atualizacao...
               </p>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full bg-gray-700 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${data.percent}%` }}
@@ -80,9 +80,9 @@ export default function UpdateToast() {
       toast.custom(
         (t) => (
           <div
-            className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-white shadow-lg rounded-lg p-4 border border-green-200 min-w-[300px]`}
+            className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-gray-900 shadow-lg rounded-lg p-4 border border-green-200 min-w-[300px]`}
           >
-            <p className="text-sm font-medium text-gray-700 mb-1">
+            <p className="text-sm font-medium text-gray-300 mb-1">
               Atualizacao v{data.version} pronta!
             </p>
             <p className="text-xs text-gray-500 mb-3">

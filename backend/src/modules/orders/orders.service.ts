@@ -12,7 +12,7 @@ import { printerService } from '../../services/printer/printer.service';
 import { baileysService } from '../../services/whatsapp/baileys.service';
 
 export class OrdersService {
-  async getAll(filters?: { status?: OrderStatus; customer_id?: string; date_from?: string; date_to?: string; limit?: number; offset?: number }) {
+  async getAll(filters?: { status?: OrderStatus; customer_id?: string; date_from?: string; date_to?: string; order_type?: string; limit?: number; offset?: number }) {
     const [orders, total] = await Promise.all([
       ordersModel.findAll(filters),
       ordersModel.count(filters),
@@ -33,6 +33,7 @@ export class OrdersService {
     delivery_address?: string;
     delivery_notes?: string;
     notes?: string;
+    order_type?: string;
     whatsapp_message_id?: string;
   }) {
     // Validate products and calculate totals
@@ -48,7 +49,7 @@ export class OrdersService {
         stockWarnings.push({ product_name: product.name, requested: item.quantity, available: product.stock });
       }
 
-      const price = product.promo_price || product.price;
+      const price = product.promo_price ?? product.price;
       items.push({
         product_id: product.id,
         product_name: product.name,
@@ -70,6 +71,7 @@ export class OrdersService {
       subtotal,
       discount,
       total,
+      order_type: data.order_type || 'delivery',
       metadata,
     });
 

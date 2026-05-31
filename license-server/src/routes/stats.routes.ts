@@ -1,10 +1,11 @@
 import { Router, Response } from 'express';
 import { query, queryOne } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { asyncHandler } from '../middleware/async-handler';
 
 const router = Router();
 
-router.get('/', authMiddleware, async (_req: AuthRequest, res: Response) => {
+router.get('/', authMiddleware, asyncHandler(async (_req: AuthRequest, res: Response) => {
   const [clients, licenses, recentActivations] = await Promise.all([
     queryOne(
       `SELECT
@@ -44,6 +45,6 @@ router.get('/', authMiddleware, async (_req: AuthRequest, res: Response) => {
       recentActivations: recentActivations || [],
     },
   });
-});
+}));
 
 export default router;

@@ -349,7 +349,41 @@ class NLPService {
       consumedRanges.push([idx, rangeEnd]);
     }
 
-    // If no alias matched, try fuzzy matching on words
+    // If no alias matched, try direct product name matching
+    if (results.length === 0) {
+      // Try matching the full message (or message without quantity prefix) as a product name substring
+      const messageNorm = message.replace(/^\d+\s*x?\s*/, '').trim();
+      const directMatches = this.allProducts.filter((p: any) => {
+        const nameNorm = this.normalize(p.name);
+        return nameNorm.includes(messageNorm) || messageNorm.includes(nameNorm);
+      });
+
+      if (directMatches.length === 1) {
+        const before = message.replace(messageNorm, '').trim();
+        const quantity = this.extractQuantity(before);
+        results.push({
+          product: directMatches[0],
+          quantity,
+          alias: messageNorm,
+        });
+        matchedProductIds.add(directMatches[0].id);
+      } else if (directMatches.length > 1) {
+        // Multiple products match — ambiguous
+        // Pick the shortest name (most specific match)
+        directMatches.sort((a: any, b: any) => this.normalize(a.name).length - this.normalize(b.name).length);
+        const best = directMatches[0];
+        const before = message.replace(messageNorm, '').trim();
+        const quantity = this.extractQuantity(before);
+        results.push({
+          product: best,
+          quantity,
+          alias: messageNorm,
+        });
+        matchedProductIds.add(best.id);
+      }
+    }
+
+    // If still no match, try fuzzy matching on words
     if (results.length === 0) {
       const words = message.split(' ').filter(w => w.length >= 3);
 

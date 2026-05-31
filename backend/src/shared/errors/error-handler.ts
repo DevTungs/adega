@@ -6,11 +6,11 @@ export function setupErrorHandler(app: FastifyInstance) {
   app.setErrorHandler((error: any, request: FastifyRequest, reply: FastifyReply) => {
     request.log.error(error);
 
-    if (error instanceof AppError) {
-      return reply.status(error.statusCode).send({
+    if (error instanceof AppError || (error.statusCode && error.code)) {
+      return reply.status(error.statusCode || 500).send({
         success: false,
-        error: error.code,
-        message: error.message,
+        error: error.code || 'ERROR',
+        message: error.message || 'Erro interno do servidor',
       });
     }
 

@@ -145,11 +145,11 @@ export default function Messages() {
   ));
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="h-[calc(100vh-8rem)] flex bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden">
       {/* Conversations List */}
-      <div className={`${selectedPhone ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 border-r border-gray-200`}>
+      <div className={`${selectedPhone ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 border-r border-gray-800`}>
         {/* Search */}
-        <div className="p-3 border-b border-gray-200">
+        <div className="p-3 border-b border-gray-800">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
@@ -157,7 +157,7 @@ export default function Messages() {
               placeholder="Buscar conversa..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full pl-10 pr-4 py-2 bg-gray-800/50 border border-gray-800 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
         </div>
@@ -169,7 +169,7 @@ export default function Messages() {
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
             </div>
           ) : filteredConversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-gray-500">
+            <div className="flex flex-col items-center justify-center h-32 text-gray-400">
               <MessageCircle className="w-8 h-8 mb-2" />
               <p className="text-sm">Nenhuma conversa</p>
             </div>
@@ -178,7 +178,7 @@ export default function Messages() {
               <button
                 key={conv.phone}
                 onClick={() => setSelectedPhone(conv.phone)}
-                className={`w-full p-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 ${
+                className={`w-full p-3 text-left hover:bg-gray-800/50 transition-colors border-b border-gray-800 ${
                   selectedPhone === conv.phone ? 'bg-primary-50' : ''
                 }`}
               >
@@ -188,14 +188,14 @@ export default function Messages() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <p className="font-medium text-gray-900 text-sm truncate">
+                      <p className="font-medium text-white text-sm truncate">
                         {formatPhone(conv.phone)}
                       </p>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-400">
                         {formatDate(conv.lastTime)}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-500 truncate mt-0.5">
+                    <p className="text-sm text-gray-400 truncate mt-0.5">
                       {conv.lastMessage}
                     </p>
                   </div>
@@ -210,10 +210,10 @@ export default function Messages() {
       {selectedPhone ? (
         <div className="flex-1 flex flex-col">
           {/* Header */}
-          <div className="p-3 border-b border-gray-200 bg-white flex items-center gap-3">
+          <div className="p-3 border-b border-gray-800 bg-gray-900 flex items-center gap-3">
             <button
               onClick={() => setSelectedPhone(null)}
-              className="md:hidden p-1 hover:bg-gray-100 rounded-lg"
+              className="md:hidden p-1 hover:bg-gray-800 rounded-lg"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -221,14 +221,14 @@ export default function Messages() {
               <MessageCircle className="w-4 h-4 text-primary-600" />
             </div>
             <div>
-              <p className="font-medium text-gray-900 text-sm">
+              <p className="font-medium text-white text-sm">
                 {formatPhone(selectedPhone)}
               </p>
             </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800/50">
             {messages.map((msg, i) => (
               <div
                 key={i}
@@ -238,7 +238,7 @@ export default function Messages() {
                   className={`max-w-[75%] px-3 py-2 rounded-lg text-sm ${
                     msg.direction === 'out'
                       ? 'bg-primary-600 text-white rounded-br-none'
-                      : 'bg-white text-gray-900 border border-gray-200 rounded-bl-none'
+                      : 'bg-gray-900 text-white border border-gray-800 rounded-bl-none'
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.message}</p>
@@ -254,7 +254,7 @@ export default function Messages() {
           </div>
 
           {/* Input */}
-          <div className="p-3 border-t border-gray-200 bg-white">
+          <div className="p-3 border-t border-gray-800 bg-gray-900">
             <div className="flex gap-2">
               <input
                 type="text"
@@ -262,7 +262,7 @@ export default function Messages() {
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="flex-1 px-4 py-2 bg-gray-800/50 border border-gray-800 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
               <button
                 onClick={handleSend}
@@ -275,7 +275,7 @@ export default function Messages() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-gray-500">
+        <div className="flex-1 flex items-center justify-center text-gray-400">
           <div className="text-center">
             <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
             <p className="text-lg font-medium">Selecione uma conversa</p>

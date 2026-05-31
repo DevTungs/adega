@@ -64,7 +64,7 @@ export default function Suppliers() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Fornecedores</h1>
+        <h1 className="text-2xl font-bold text-white">Fornecedores</h1>
         <button onClick={openCreate} className="btn-primary flex items-center gap-2">
           <Plus size={18} />
           Novo Fornecedor
@@ -89,36 +89,36 @@ export default function Suppliers() {
       ) : (
         <div className="card overflow-hidden p-0">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-800/50 border-b border-gray-800">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fornecedor</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">CNPJ</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contato</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Fornecedor</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">CNPJ</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Contato</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Status</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtered.map((supplier) => (
-                <tr key={supplier.id} className="hover:bg-gray-50">
+                <tr key={supplier.id} className="hover:bg-gray-800/50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Truck size={16} className="text-blue-600" />
                       <div>
-                        <span className="font-medium text-gray-900">{supplier.name}</span>
-                        {supplier.address && <div className="text-sm text-gray-500">{supplier.address}</div>}
+                        <span className="font-medium text-white">{supplier.name}</span>
+                        {supplier.address && <div className="text-sm text-gray-400">{supplier.address}</div>}
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 font-mono">{supplier.cnpj || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-400 font-mono">{supplier.cnpj || '-'}</td>
                   <td className="px-4 py-3 text-sm">
                     {supplier.phone && <div>{supplier.phone}</div>}
-                    {supplier.email && <div className="text-gray-500">{supplier.email}</div>}
+                    {supplier.email && <div className="text-gray-400">{supplier.email}</div>}
                     {!supplier.phone && !supplier.email && '-'}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                      supplier.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                      supplier.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-800 text-gray-400'
                     }`}>
                       {supplier.is_active ? 'Ativo' : 'Inativo'}
                     </span>

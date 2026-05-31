@@ -91,25 +91,6 @@ export async function up(db: DatabaseWrapper): Promise<void> {
     updated_at TEXT DEFAULT (datetime('now'))
   )`);
 
-  // Coupons
-  db.run(`CREATE TABLE IF NOT EXISTS coupons (
-    id TEXT PRIMARY KEY,
-    code TEXT UNIQUE NOT NULL,
-    description TEXT,
-    type TEXT NOT NULL,
-    value REAL NOT NULL,
-    min_order_value REAL,
-    max_discount REAL,
-    max_uses INTEGER,
-    current_uses INTEGER DEFAULT 0,
-    per_customer INTEGER DEFAULT 1,
-    start_date TEXT NOT NULL,
-    end_date TEXT NOT NULL,
-    is_active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-  )`);
-
   // Orders
   db.run(`CREATE TABLE IF NOT EXISTS orders (
     id TEXT PRIMARY KEY,
@@ -125,7 +106,6 @@ export async function up(db: DatabaseWrapper): Promise<void> {
     delivery_notes TEXT,
     estimated_time INTEGER,
     assigned_driver TEXT REFERENCES delivery_drivers(id),
-    coupon_id TEXT REFERENCES coupons(id),
     whatsapp_message_id TEXT,
     notes TEXT,
     cancel_reason TEXT,
@@ -177,28 +157,6 @@ export async function up(db: DatabaseWrapper): Promise<void> {
     created_at TEXT DEFAULT (datetime('now'))
   )`);
 
-  // Promotions
-  db.run(`CREATE TABLE IF NOT EXISTS promotions (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
-    type TEXT NOT NULL,
-    value REAL,
-    min_order_value REAL,
-    min_quantity INTEGER,
-    applicable_products TEXT DEFAULT '[]',
-    applicable_categories TEXT DEFAULT '[]',
-    buy_quantity INTEGER,
-    get_quantity INTEGER,
-    start_date TEXT NOT NULL,
-    end_date TEXT NOT NULL,
-    is_active INTEGER DEFAULT 1,
-    max_uses INTEGER,
-    current_uses INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-  )`);
-
   // WhatsApp sessions
   db.run(`CREATE TABLE IF NOT EXISTS whatsapp_sessions (
     id TEXT PRIMARY KEY,
@@ -213,19 +171,6 @@ export async function up(db: DatabaseWrapper): Promise<void> {
   )`);
 
   db.run('CREATE INDEX IF NOT EXISTS idx_wa_sessions_phone ON whatsapp_sessions(phone)');
-
-  // Admin users
-  db.run(`CREATE TABLE IF NOT EXISTS admin_users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    name TEXT,
-    role TEXT DEFAULT 'admin',
-    is_active INTEGER DEFAULT 1,
-    last_login_at TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-  )`);
 
   // Audit log
   db.run(`CREATE TABLE IF NOT EXISTS audit_log (
@@ -245,9 +190,9 @@ export async function up(db: DatabaseWrapper): Promise<void> {
 
 export async function down(db: DatabaseWrapper): Promise<void> {
   const tables = [
-    'audit_log', 'admin_users', 'whatsapp_sessions', 'promotions',
+    'audit_log', 'whatsapp_sessions',
     'order_status_history', 'order_items', 'orders', 'order_sequence',
-    'coupons', 'delivery_drivers', 'customers', 'product_aliases',
+    'delivery_drivers', 'customers', 'product_aliases',
     'products', 'categories',
   ];
   for (const table of tables) {

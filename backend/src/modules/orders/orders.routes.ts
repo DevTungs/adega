@@ -17,6 +17,7 @@ const createOrderSchema = z.object({
   delivery_address: z.string().optional(),
   delivery_notes: z.string().optional(),
   notes: z.string().optional(),
+  order_type: z.enum(['pdv', 'delivery']).optional(),
 });
 
 const updateStatusSchema = z.object({
@@ -33,12 +34,13 @@ export async function registerOrderRoutes(app: FastifyInstance) {
   app.get('/api/orders', {
     preHandler: [authMiddleware],
     handler: async (request, reply) => {
-      const { status, customer_id, date_from, date_to, limit, offset } = request.query as any;
+      const { status, customer_id, date_from, date_to, order_type, limit, offset } = request.query as any;
       const result = await ordersService.getAll({
         status,
         customer_id,
         date_from,
         date_to,
+        order_type,
         limit: limit ? parseInt(limit) : 50,
         offset: offset ? parseInt(offset) : 0,
       });

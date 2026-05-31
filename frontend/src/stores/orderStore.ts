@@ -8,10 +8,12 @@ interface OrderState {
   total: number;
   isLoading: boolean;
   statusFilter: OrderStatus | '';
-  fetchOrders: (params?: { status?: string; limit?: number; offset?: number }) => Promise<void>;
+  typeFilter: string;
+  fetchOrders: (params?: { status?: string; order_type?: string; limit?: number; offset?: number }) => Promise<void>;
   fetchOrderById: (id: string) => Promise<void>;
   updateStatus: (id: string, status: OrderStatus, notes?: string) => Promise<void>;
   setStatusFilter: (status: OrderStatus | '') => void;
+  setTypeFilter: (type: string) => void;
   addOrder: (order: Order) => void;
   updateOrder: (order: Order) => void;
 }
@@ -22,13 +24,15 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   total: 0,
   isLoading: false,
   statusFilter: '',
+  typeFilter: '',
 
   fetchOrders: async (params) => {
     set({ isLoading: true });
     try {
-      const { statusFilter } = get();
+      const { statusFilter, typeFilter } = get();
       const { data } = await ordersApi.getAll({
         status: params?.status || statusFilter || undefined,
+        order_type: params?.order_type || typeFilter || undefined,
         limit: params?.limit || 50,
         offset: params?.offset || 0,
       });
@@ -65,6 +69,11 @@ export const useOrderStore = create<OrderState>((set, get) => ({
   setStatusFilter: (status) => {
     set({ statusFilter: status });
     get().fetchOrders({ status: status || undefined });
+  },
+
+  setTypeFilter: (type) => {
+    set({ typeFilter: type });
+    get().fetchOrders({ order_type: type || undefined });
   },
 
   addOrder: (order) => {

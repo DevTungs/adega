@@ -1,87 +1,50 @@
 import { qb } from '../../config/database';
 import { v4 as uuid } from 'uuid';
-import crypto from 'crypto';
-import { License } from '../../shared/types';
-import { getMachineFingerprint } from './machine-fingerprint';
 
-const HMAC_SECRET = 'dlv-lic-2024-secure'; // Fixed pepper added to HMAC key
-
-function computeHMAC(licenseKey: string, status: string, expiresAt: string | null, fingerprint: string): string {
-  const data = `${licenseKey}|${status}|${expiresAt || ''}`;
-  const key = `${fingerprint}::${HMAC_SECRET}`;
-  return crypto.createHmac('sha256', key).update(data).digest('hex');
+export interface LicenseToken {
+  id: string;
+  license_key: string;
+  token: string;
+  machine_fingerprint: string;
+  stable_fingerprint: string | null;
+  gtin_token: string | null;
+  gtin_token_expires: string | null;
+  activated_at: string;
+  last_refreshed_at: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export class LicenseModel {
-  getCurrent(): License | undefined {
-    const row = qb.selectOne('licenses', '*', undefined, []) as License | undefined;
-    if (!row) return undefined;
-
-    // Verify HMAC integrity
-    try {
-      const meta = JSON.parse(row.metadata || '{}');
-      if (meta.hmac) {
-        const fingerprint = getMachineFingerprint();
-        const expected = computeHMAC(row.license_key, row.status, row.expires_at, fingerprint);
-        if (meta.hmac !== expected) {
-          // Tampered — return with special status
-          return { ...row, status: 'tampered' };
-        }
-      }
-    } catch {
-      // If metadata is corrupt, treat as tampered
-      return { ...row, status: 'tampered' };
-    }
-
-    return row;
+  getCurrent(): LicenseToken | undefined {
+    return qb.selectOne('license_tokens', '*', undefined, []) as LicenseToken | undefined;
   }
 
-  upsert(data: Partial<License> & { license_key: string; machine_fingerprint: string; status: string }): License {
-    const current = qb.selectOne('licenses', '*', undefined, []) as License | undefined;
+  upsert(data: { license_key: string; token: string; machine_fingerprint: string; stable_fingerprint?: string }): LicenseToken {
+    const current = qb.selectOne('license_tokens', '*', undefined, []) as LicenseToken | undefined;
     const now = new Date().toISOString();
 
-    // Compute HMAC of critical fields
-    const fingerprint = getMachineFingerprint();
-    const hmac = computeHMAC(data.license_key, data.status, data.expires_at || null, fingerprint);
-
-    // Preserve existing metadata keys (like serverTime, graceUntil, canCreateOrders) and add hmac
-    let existingMeta: Record<string, any> = {};
-    try {
-      existingMeta = current ? JSON.parse(current.metadata || '{}') : {};
-    } catch { /* ignore */ }
-
-    const metadata = JSON.stringify({
-      ...existingMeta,
-      ...(data.metadata ? JSON.parse(data.metadata) : {}),
-      hmac,
-    });
-
     if (current) {
-      qb.update('licenses', {
+      qb.update('license_tokens', {
         license_key: data.license_key,
-        status: data.status,
-        customer_name: data.customer_name || null,
+        token: data.token,
         machine_fingerprint: data.machine_fingerprint,
-        expires_at: data.expires_at || null,
-        last_validated_at: data.last_validated_at || null,
-        last_error: data.last_error || null,
-        metadata,
+        stable_fingerprint: data.stable_fingerprint || null,
+        last_refreshed_at: now,
         updated_at: now,
       }, 'id = ?', [current.id]);
       return this.getCurrent()!;
     }
 
-    const id = data.id || uuid();
-    qb.insert('licenses', {
+    const id = uuid();
+    qb.insert('license_tokens', {
       id,
       license_key: data.license_key,
-      status: data.status,
-      customer_name: data.customer_name || null,
+      token: data.token,
       machine_fingerprint: data.machine_fingerprint,
-      expires_at: data.expires_at || null,
-      last_validated_at: data.last_validated_at || null,
-      last_error: data.last_error || null,
-      metadata,
+      stable_fingerprint: data.stable_fingerprint || null,
+      activated_at: now,
+      last_refreshed_at: now,
       created_at: now,
       updated_at: now,
     });
@@ -89,14 +52,58 @@ export class LicenseModel {
     return this.getCurrent()!;
   }
 
-  setError(message: string): License | undefined {
-    const current = qb.selectOne('licenses', '*', undefined, []) as License | undefined;
-    if (!current) return undefined;
-    qb.update('licenses', {
-      last_error: message,
+  updateToken(token: string) {
+    const current = qb.selectOne('license_tokens', '*', undefined, []) as LicenseToken | undefined;
+    if (!current) return;
+
+    qb.update('license_tokens', {
+      token,
       updated_at: new Date().toISOString(),
     }, 'id = ?', [current.id]);
-    return this.getCurrent();
+  }
+
+  updateLastRefreshed() {
+    const current = qb.selectOne('license_tokens', '*', undefined, []) as LicenseToken | undefined;
+    if (!current) return;
+
+    qb.update('license_tokens', {
+      last_refreshed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, 'id = ?', [current.id]);
+  }
+
+  updateFingerprints(machineFingerprint: string, stableFingerprint: string) {
+    const current = qb.selectOne('license_tokens', '*', undefined, []) as LicenseToken | undefined;
+    if (!current) return;
+
+    qb.update('license_tokens', {
+      machine_fingerprint: machineFingerprint,
+      stable_fingerprint: stableFingerprint,
+      updated_at: new Date().toISOString(),
+    }, 'id = ?', [current.id]);
+  }
+
+  updateGtinToken(gtinToken: string, expiresAt: string) {
+    const current = qb.selectOne('license_tokens', '*', undefined, []) as LicenseToken | undefined;
+    if (!current) return;
+
+    qb.update('license_tokens', {
+      gtin_token: gtinToken,
+      gtin_token_expires: expiresAt,
+      updated_at: new Date().toISOString(),
+    }, 'id = ?', [current.id]);
+  }
+
+  getGtinToken(): { token: string; expires: string } | null {
+    const current = qb.selectOne('license_tokens', 'gtin_token, gtin_token_expires', undefined, []) as any;
+    if (!current?.gtin_token || !current?.gtin_token_expires) return null;
+    return { token: current.gtin_token, expires: current.gtin_token_expires };
+  }
+
+  clear() {
+    const current = qb.selectOne('license_tokens', '*', undefined, []) as LicenseToken | undefined;
+    if (!current) return;
+    qb.delete('license_tokens', 'id = ?', [current.id]);
   }
 }
 
