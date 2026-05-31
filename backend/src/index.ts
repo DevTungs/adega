@@ -1,25 +1,6 @@
-import dotenv from 'dotenv';
-import path from 'path';
-import fs from 'fs';
 import { initDatabase, setDb } from './config/database';
+import { config } from './config/app.config';
 import { logger } from './shared/middlewares/logger';
-
-// Load .env from different locations based on environment
-const envPaths = [
-  path.resolve(__dirname, '../.env'),                // Development
-  path.resolve(process.cwd(), '.env'),              // Production (cwd)
-  path.resolve(process.resourcesPath || '', '.env'), // Electron packaged
-];
-
-for (const envPath of envPaths) {
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-    break;
-  }
-}
-
-const PORT = parseInt(process.env.PORT || '3333');
-const HOST = process.env.HOST || '0.0.0.0';
 
 export async function start() {
   // Initialize database
@@ -55,9 +36,9 @@ export async function start() {
     process.on('SIGINT', () => shutdown('SIGINT'));
   }
 
-  await app.listen({ port: PORT, host: HOST });
-  logger.info(`[Server] Running at http://${HOST}:${PORT}`);
-  logger.info(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`);
+  await app.listen({ port: config.port, host: config.host });
+  logger.info(`[Server] Running at http://${config.host}:${config.port}`);
+  logger.info(`[Server] Environment: ${config.nodeEnv}`);
 
   return app;
 }

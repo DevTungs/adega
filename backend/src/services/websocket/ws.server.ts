@@ -1,13 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { Server as SocketIOServer } from 'socket.io';
 import { logger } from '../../shared/middlewares/logger';
+import { config } from '../../config/app.config';
 
 let io: SocketIOServer;
 
 export function setupWebSocket(app: FastifyInstance) {
   io = new SocketIOServer(app.server, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      origin: config.frontendUrl,
       credentials: true,
     },
   });

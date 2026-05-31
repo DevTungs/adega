@@ -7,6 +7,7 @@ import { authMiddleware, getUser } from './auth.middleware';
 import { validateBody } from '../../shared/middlewares/validation';
 import { qb, getDb } from '../../config/database';
 import { AppError } from '../../shared/errors/app-error';
+import { licenseService } from '../license/license.service';
 
 const setupSchema = z.object({
   username: z.string().min(3, 'Usuario deve ter pelo menos 3 caracteres'),
@@ -82,7 +83,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     },
   });
 
-  // Login (public)
+  // Login (public) — also validates license against server
   app.post('/api/auth/login', {
     preHandler: [validateBody(loginSchema)],
     handler: async (request, reply) => {
@@ -96,9 +97,18 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         role: user.role,
       });
 
+      // Force license validation (refreshes from server when possible)
+      let license = null;
+      try {
+        license = await licenseService.validateCurrent(true);
+      } catch {
+        // License check failed — login still succeeds
+        license = licenseService.getStatus();
+      }
+
       reply.send({
         success: true,
-        data: { token, user },
+        data: { token, user, license },
         message: 'Login realizado com sucesso',
       });
     },

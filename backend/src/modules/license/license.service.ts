@@ -2,10 +2,10 @@ import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import { AppError } from '../../shared/errors/app-error';
 import { LicenseStatus } from '../../shared/types';
+import { config } from '../../config/app.config';
 import { licenseModel } from './license.model';
 import { getMachineFingerprint, getStableFingerprint } from './machine-fingerprint';
 
-const LICENSE_JWT_SECRET = process.env.LICENSE_JWT_SECRET || 'delivery-license-secret-2024';
 const MAX_VALIDATION_INTERVAL_MS = 30 * 60 * 1000; // 30 min between refresh attempts
 const SERVER_CHECK_TTL_MS = 5 * 60 * 1000; // cache server reachability for 5 min
 
@@ -46,7 +46,7 @@ export class LicenseService {
 
   async activate(licenseKey: string) {
     const fingerprint = getMachineFingerprint();
-    const baseUrl = process.env.LICENSE_API_URL;
+    const baseUrl = config.licenseApiUrl;
     if (!baseUrl) {
       throw AppError.badRequest('Servidor de licença não configurado');
     }
@@ -54,7 +54,7 @@ export class LicenseService {
     try {
       const { data } = await axios.post(
         `${baseUrl.replace(/\/$/, '')}/api/client/licenses/activate`,
-        { licenseKey, machineFingerprint: fingerprint, appId: process.env.LICENSE_APP_ID || 'delivery' },
+        { licenseKey, machineFingerprint: fingerprint, appId: config.licenseAppId },
         { timeout: 10000 }
       );
 
@@ -149,7 +149,7 @@ export class LicenseService {
     let decoded: LicenseJWTPayload;
 
     try {
-      decoded = jwt.verify(token, LICENSE_JWT_SECRET) as LicenseJWTPayload;
+      decoded = jwt.verify(token, config.licenseJwtSecret) as LicenseJWTPayload;
     } catch (verifyError) {
       // JWT expired by time (exp field) — try decode without verification
       // The token might still have valid data, just the exp field passed
@@ -262,7 +262,7 @@ export class LicenseService {
   }
 
   private async refreshFromServer(licenseKey: string) {
-    const baseUrl = process.env.LICENSE_API_URL;
+    const baseUrl = config.licenseApiUrl;
     if (!baseUrl) return null;
 
     const fingerprint = getMachineFingerprint();
@@ -270,7 +270,7 @@ export class LicenseService {
     try {
       const { data } = await axios.post(
         `${baseUrl.replace(/\/$/, '')}/api/client/licenses/validate`,
-        { licenseKey, machineFingerprint: fingerprint, appId: process.env.LICENSE_APP_ID || 'delivery' },
+        { licenseKey, machineFingerprint: fingerprint, appId: config.licenseAppId },
         { timeout: 10000 }
       );
 
@@ -305,12 +305,12 @@ export class LicenseService {
    * Quick non-blocking check if the license-server is reachable.
    * Caches the result for SERVER_CHECK_TTL_MS.
    */
-  async checkServerReachable(): Promise<boolean> {
-    if (this.lastServerCheck && Date.now() - this.lastServerCheck.at < SERVER_CHECK_TTL_MS) {
+  async checkServerReachable(force = false): Promise<boolean> {
+    if (!force && this.lastServerCheck && Date.now() - this.lastServerCheck.at < SERVER_CHECK_TTL_MS) {
       return this.lastServerCheck.reachable;
     }
 
-    const baseUrl = process.env.LICENSE_API_URL;
+    const baseUrl = config.licenseApiUrl;
     if (!baseUrl) {
       this.lastServerCheck = { reachable: false, at: Date.now() };
       return false;

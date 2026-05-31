@@ -9,8 +9,9 @@ import { licenseService } from '../license/license.service';
 import { emitAgentRequest } from '../../services/websocket/ws.server';
 import { logger } from '../../shared/middlewares/logger';
 import { normalizePhone } from '../../shared/utils/phone';
+import { config } from '../../config/app.config';
 
-const BOT_MODE = process.env.BOT_MODE || 'ai'; // 'ai' or 'nlp'
+const BOT_MODE = config.botMode;
 logger.info({ mode: BOT_MODE }, '[HANDLER] Bot mode configured');
 
 const PAYMENT_MAP: Record<string, string> = {

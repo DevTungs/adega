@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './stores/authStore';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Setup from './pages/Setup';
@@ -19,6 +19,7 @@ import Reports from './pages/Reports';
 import Suppliers from './pages/Suppliers';
 import Users from './pages/Users';
 import UpdateToast from './components/UpdateToast';
+import LicenseServerDownModal from './components/LicenseServerDownModal';
 import api from './api/client';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -31,11 +32,27 @@ export default function App() {
   const { loadUser, token } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [licenseServerDown, setLicenseServerDown] = useState(false);
+
+  const checkLicenseServer = useCallback(async () => {
+    try {
+      const { data } = await api.get('/system/license-health');
+      setLicenseServerDown(!data.reachable);
+    } catch {
+      setLicenseServerDown(true);
+    }
+  }, []);
 
   useEffect(() => {
-    // Check if setup is needed
-    api.get('/setup/status').then(({ data }) => {
-      if (data.data?.needsSetup) {
+    // Check if setup is needed + license-server health
+    Promise.all([
+      api.get('/setup/status'),
+      api.get('/system/license-health').catch(() => ({ data: { reachable: false } })),
+    ]).then(([setupRes, healthRes]) => {
+      const serverReachable = (healthRes as any).data?.reachable !== false;
+      setLicenseServerDown(!serverReachable);
+
+      if (setupRes.data.data?.needsSetup) {
         setNeedsSetup(true);
         setLoading(false);
       } else if (token) {
@@ -44,7 +61,6 @@ export default function App() {
         setLoading(false);
       }
     }).catch(() => {
-      // If setup check fails, try normal auth flow
       if (token) {
         loadUser().finally(() => setLoading(false));
       } else {
@@ -52,6 +68,12 @@ export default function App() {
       }
     });
   }, [token, loadUser]);
+
+  // Periodic license-server health check (every 2 minutes)
+  useEffect(() => {
+    const interval = setInterval(checkLicenseServer, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [checkLicenseServer]);
 
   if (loading) {
     return (
@@ -62,10 +84,14 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Toaster position="top-right" />
-      <UpdateToast />
-      <Routes>
+    <>
+      {licenseServerDown && (
+        <LicenseServerDownModal onRetry={checkLicenseServer} />
+      )}
+      <BrowserRouter>
+        <Toaster position="top-right" />
+        <UpdateToast />
+        <Routes>
         {needsSetup && (
           <Route path="/setup" element={<Setup />} />
         )}
@@ -102,5 +128,6 @@ export default function App() {
         )}
       </Routes>
     </BrowserRouter>
+    </>
   );
 }

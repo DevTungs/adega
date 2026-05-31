@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onUpdateDownloadProgress: (callback) => ipcRenderer.on('update-download-progress', callback),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback),
 
+  // License server retry (from maintenance screen)
+  retryLicenseCheck: () => ipcRenderer.invoke('retry-license-check'),
+
   // Logging
   log: (level, message) => ipcRenderer.send('log', { level, message }),
 });

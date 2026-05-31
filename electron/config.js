@@ -31,45 +31,10 @@ function ensureDirectories() {
 }
 
 /**
- * Create a default .env file in userData if it doesn't exist
+ * Get .env path (kept for optional manual overrides only)
  */
 function ensureEnvFile() {
-  const envPath = path.join(getDataDir(), '..', '.env');
-
-  if (!fs.existsSync(envPath)) {
-    const defaultEnv = `# Configurações do Sistema - Gerado automaticamente
-PORT=3333
-HOST=127.0.0.1
-NODE_ENV=production
-LOG_LEVEL=basic
-
-# Database
-DB_PATH=${getDbPath()}
-
-# WhatsApp
-WA_SESSION_PATH=${getSessionsPath()}
-WA_RECONNECT_INTERVAL=5000
-WA_MAX_RECONNECT=10
-BOT_MODE=nlp
-
-# Impressora
-PRINTER_TYPE=usb
-
-# Backup
-BACKUP_PATH=${getBackupsPath()}
-BACKUP_KEEP_COUNT=30
-
-# URLs
-FRONTEND_URL=http://localhost:3333
-LICENSE_API_URL=http://localhost:3400
-LICENSE_APP_ID=delivery
-`;
-
-    fs.writeFileSync(envPath, defaultEnv, 'utf-8');
-    return envPath;
-  }
-
-  return envPath;
+  return path.join(getDataDir(), '..', '.env');
 }
 
 /**
@@ -91,13 +56,13 @@ function loadElectronEnv() {
   // Ensure directories exist
   ensureDirectories();
 
-  // Ensure .env exists
+  // Load .env file if it exists (optional manual overrides)
   const envPath = ensureEnvFile();
+  if (fs.existsSync(envPath)) {
+    require('dotenv').config({ path: envPath });
+  }
 
-  // Load .env file
-  require('dotenv').config({ path: envPath });
-
-  // Set Electron-specific env vars
+  // Set Electron-specific env vars (always override)
   process.env.ELECTRON_USER_DATA = getBaseDir();
   process.env.DB_PATH = getDbPath();
   process.env.WA_SESSION_PATH = getSessionsPath();

@@ -21,6 +21,15 @@ export default function Login() {
     try {
       const { data } = await api.post('/auth/login', { username, password });
       setAuth(data.data.token, data.data.user);
+
+      // Check license status returned from login
+      const license = data.data.license;
+      if (license && !license.canCreateOrders) {
+        toast.error(license.message || 'Licença inativa. Ative para usar o sistema.');
+        window.location.href = '/license';
+        return;
+      }
+
       toast.success('Login realizado!');
       window.location.href = '/';
     } catch (err: any) {

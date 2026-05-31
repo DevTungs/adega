@@ -12,10 +12,11 @@ import path from 'path';
 import fs from 'fs';
 import QRCode from 'qrcode';
 import { logger } from '../../shared/middlewares/logger';
+import { config } from '../../config/app.config';
 import { whatsappHandler } from '../../modules/whatsapp/whatsapp.handler';
 import { emitWAQR, emitWAStatus, emitWAMessage } from '../websocket/ws.server';
 
-const SESSION_PATH = path.resolve(__dirname, '../../../../', process.env.WA_SESSION_PATH || './data/sessions');
+const SESSION_PATH = path.resolve(__dirname, '../../../../', config.waSessionPath);
 
 export type WAConnectionState = 'disconnected' | 'connecting' | 'connected' | 'qr_pending';
 
@@ -38,7 +39,7 @@ class BaileysService {
   private state: WAConnectionState = 'disconnected';
   private qrCode: string | null = null;
   private reconnectAttempts = 0;
-  private maxReconnect = parseInt(process.env.WA_MAX_RECONNECT || '10');
+  private maxReconnect = config.waMaxReconnect;
   private botActive = true;
   private lastConnectTime = 0;
   private quickDisconnectCount = 0;

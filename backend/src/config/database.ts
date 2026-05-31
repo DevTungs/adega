@@ -1,25 +1,11 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
-import dotenv from 'dotenv';
-
-// Load .env from different locations based on environment
-const envPaths = [
-  path.resolve(__dirname, '../../.env'),           // Development
-  path.resolve(process.cwd(), '.env'),              // Production (cwd)
-  path.resolve(process.resourcesPath || '', '.env'), // Electron packaged
-];
-
-for (const envPath of envPaths) {
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-    break;
-  }
-}
+import { config } from './app.config';
 
 // Resolve DB path - support absolute paths (Electron) or relative paths (dev)
 function resolveDbPath(): string {
-  const dbPathEnv = process.env.DB_PATH || './data/delivery.db';
+  const dbPathEnv = config.dbPath;
 
   // If absolute path, use it directly
   if (path.isAbsolute(dbPathEnv)) {
@@ -27,8 +13,8 @@ function resolveDbPath(): string {
   }
 
   // If running in Electron (packaged), use userData
-  if (process.env.ELECTRON_USER_DATA) {
-    return path.join(process.env.ELECTRON_USER_DATA, 'data', 'delivery.db');
+  if (config.electronUserData) {
+    return path.join(config.electronUserData, 'data', 'delivery.db');
   }
 
   // Development: resolve relative to project root

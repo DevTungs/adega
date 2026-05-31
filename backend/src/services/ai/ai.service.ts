@@ -1,14 +1,10 @@
 import axios from 'axios';
-import dotenv from 'dotenv';
-import path from 'path';
 import { AIResponse } from '../../shared/types';
 import { logger } from '../../shared/middlewares/logger';
 import { AppError } from '../../shared/errors/app-error';
 import { buildAIContext } from './ai.context';
 import { parseAIResponse } from './ai.parser';
 import { WhatsAppSession } from '../../shared/types';
-
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const AI_API_URL = process.env.AI_API_URL || 'https://api.example.com/v1';
 const AI_API_KEY = process.env.AI_API_KEY || '';

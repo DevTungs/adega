@@ -4,23 +4,20 @@ import jwt from '@fastify/jwt';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 import fs from 'fs';
-import dotenv from 'dotenv';
 import { setupErrorHandler } from './shared/errors/error-handler';
 import { setupRateLimit } from './shared/middlewares/rate-limit';
 import { getDb } from './config/database';
+import { config } from './config/app.config';
 import { setupWebSocket } from './services/websocket/ws.server';
 import { logger } from './shared/middlewares/logger';
 
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
-
-const isDev = process.env.NODE_ENV === 'development';
-const logLevel = process.env.LOG_LEVEL || 'info';
-const isBasicLog = logLevel === 'basic';
+const isDev = config.nodeEnv === 'development';
+const isBasicLog = config.logLevel === 'basic';
 
 export async function buildApp() {
   const app = Fastify({
     logger: {
-      level: isBasicLog ? 'warn' : logLevel,
+      level: isBasicLog ? 'warn' : config.logLevel,
       transport: isDev
         ? {
             target: 'pino-pretty',
@@ -44,15 +41,15 @@ export async function buildApp() {
   // CORS
   await app.register(cors, {
     origin: isDev
-      ? (process.env.FRONTEND_URL || 'http://localhost:5173')
+      ? config.frontendUrl
       : ['http://localhost:3333', 'http://127.0.0.1:3333', 'file://'],
     credentials: true,
   });
 
   // JWT
   await app.register(jwt, {
-    secret: process.env.JWT_SECRET || 'dev-secret',
-    sign: { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
+    secret: config.jwtSecret,
+    sign: { expiresIn: config.jwtExpiresIn },
   });
 
   // Rate limit
@@ -60,8 +57,8 @@ export async function buildApp() {
 
   // Static files (uploads)
   let uploadsPath: string;
-  if (process.env.ELECTRON_USER_DATA) {
-    uploadsPath = path.join(process.env.ELECTRON_USER_DATA, 'data', 'uploads');
+  if (config.electronUserData) {
+    uploadsPath = path.join(config.electronUserData, 'data', 'uploads');
   } else {
     uploadsPath = path.resolve(__dirname, '../../data/uploads');
   }
@@ -79,10 +76,10 @@ export async function buildApp() {
     // Resolve frontend path - support Electron and standard deployment
     let frontendPath: string;
 
-    if (process.env.FRONTEND_PATH) {
+    if (config.frontendPath) {
       // Explicit path from environment (Electron or custom deployment)
-      frontendPath = process.env.FRONTEND_PATH;
-    } else if (process.env.ELECTRON_USER_DATA) {
+      frontendPath = config.frontendPath;
+    } else if (config.electronUserData) {
       // Electron packaged - frontend is in resources
       frontendPath = path.join(process.resourcesPath || '', 'frontend');
     } else {
@@ -126,6 +123,18 @@ export async function buildApp() {
         memory: process.memoryUsage(),
         timestamp: new Date().toISOString(),
       },
+    };
+  });
+
+  // License-server health check (public, no auth)
+  app.get('/api/system/license-health', async (request) => {
+    const { licenseService } = await import('./modules/license/license.service');
+    const force = (request.query as any)?.force === 'true';
+    const reachable = await licenseService.checkServerReachable(force);
+    return {
+      reachable,
+      licenseServerUrl: config.licenseApiUrl,
+      timestamp: new Date().toISOString(),
     };
   });
 

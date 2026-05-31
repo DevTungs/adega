@@ -56,6 +56,19 @@ function updateLoadingText(text) {
   }
 }
 
+function updateProgressBar(percent) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.executeJavaScript(`
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('progress-container').style.display = 'block';
+        document.getElementById('progress-bar').style.width = ${percent} + '%';
+        document.getElementById('progress-percent').textContent = ${percent} + '%';
+      `).catch(() => {});
+    } catch {}
+  }
+}
+
 // ── Retry wrapper ────────────────────────────────────────────────────
 async function withRetry(fn, { maxAttempts = 3, baseDelayMs = 2000, attemptTimeoutMs = 15000 } = {}) {
   let lastErr;
@@ -100,6 +113,7 @@ async function checkAndUpdate() {
     autoUpdater.on('update-available', (info) => {
       writeLog('INFO', `Update available: ${info.version}`);
       updateLoadingText(`Atualização disponível: v${info.version}. Baixando...`);
+      updateProgressBar(0);
       sendToRenderer('update-available', {
         version: info.version,
         releaseDate: info.releaseDate,
@@ -110,6 +124,7 @@ async function checkAndUpdate() {
     autoUpdater.on('download-progress', (progress) => {
       const percent = Math.round(progress.percent);
       updateLoadingText(`Baixando atualização: ${percent}%`);
+      updateProgressBar(percent);
       sendToRenderer('update-download-progress', {
         percent,
         bytesPerSecond: progress.bytesPerSecond,
@@ -120,7 +135,8 @@ async function checkAndUpdate() {
 
     autoUpdater.on('update-downloaded', (info) => {
       writeLog('INFO', `Update downloaded: ${info.version}`);
-      updateLoadingText('Atualização baixada. Reiniciando...');
+      updateProgressBar(100);
+      updateLoadingText('Atualização baixada. Preparando instalador...');
       sendToRenderer('update-downloaded', { version: info.version });
       done({ available: true, version: info.version, downloaded: true });
     });

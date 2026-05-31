@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { qb } from '../../config/database';
+import { config } from '../../config/app.config';
 import { licenseModel } from '../license/license.model';
 import { logger } from '../../shared/middlewares/logger';
 
@@ -82,7 +83,7 @@ async function getGtinToken(): Promise<string | null> {
     return null;
   }
 
-  const baseUrl = process.env.LICENSE_API_URL;
+  const baseUrl = config.licenseApiUrl;
   if (!baseUrl) {
     logger.warn('LICENSE_API_URL not configured');
     return null;
@@ -205,7 +206,7 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeProduct> {
       return { found: false, error: 'Nenhuma licenca ativa. Ative a licenca para consultar codigos de barras.' };
     }
 
-    const baseUrl = process.env.LICENSE_API_URL;
+    const baseUrl = config.licenseApiUrl;
     if (!baseUrl) {
       return { found: false, error: 'Servidor de licencas nao configurado (LICENSE_API_URL).' };
     }

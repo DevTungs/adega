@@ -1,18 +1,18 @@
 import pino from 'pino';
 import path from 'path';
 import fs from 'fs';
+import { config } from '../../config/app.config';
 
 const logsDir = path.resolve(__dirname, '../../../data/logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
 
-const isDev = process.env.NODE_ENV === 'development';
-const logLevel = process.env.LOG_LEVEL || 'info';
-const isBasicLog = logLevel === 'basic';
+const isDev = config.nodeEnv === 'development';
+const isBasicLog = config.logLevel === 'basic';
 
 export const logger = pino({
-  level: isBasicLog ? 'info' : logLevel,
+  level: isBasicLog ? 'info' : config.logLevel,
   transport: isDev
     ? {
         target: 'pino-pretty',

@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AppError } from './app-error';
 import { ZodError } from 'zod';
+import { config } from '../../config/app.config';
 
 export function setupErrorHandler(app: FastifyInstance) {
   app.setErrorHandler((error: any, request: FastifyRequest, reply: FastifyReply) => {
@@ -37,7 +38,7 @@ export function setupErrorHandler(app: FastifyInstance) {
     return reply.status(500).send({
       success: false,
       error: 'INTERNAL_ERROR',
-      message: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno do servidor',
+      message: config.nodeEnv === 'development' ? error.message : 'Erro interno do servidor',
     });
   });
 }
