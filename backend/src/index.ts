@@ -2,6 +2,15 @@ import { initDatabase, setDb } from './config/database';
 import { config } from './config/app.config';
 import { logger } from './shared/middlewares/logger';
 
+// Prevent the process from crashing on unhandled errors
+process.on('uncaughtException', (err) => {
+  logger.error(err, '[Process] Uncaught exception — continuing');
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logger.error(reason, '[Process] Unhandled rejection — continuing');
+});
+
 export async function start() {
   // Initialize database
   logger.info('[DB] Initializing SQLite (sql.js)...');

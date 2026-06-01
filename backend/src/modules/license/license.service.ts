@@ -302,6 +302,16 @@ export class LicenseService {
   }
 
   /**
+   * Return cached server reachability without making a network request.
+   * Returns null if no cached result exists.
+   */
+  getCachedServerReachable(): boolean | null {
+    if (!this.lastServerCheck) return null;
+    if (Date.now() - this.lastServerCheck.at > SERVER_CHECK_TTL_MS) return null;
+    return this.lastServerCheck.reachable;
+  }
+
+  /**
    * Quick non-blocking check if the license-server is reachable.
    * Caches the result for SERVER_CHECK_TTL_MS.
    */
@@ -317,7 +327,7 @@ export class LicenseService {
     }
 
     try {
-      await axios.get(`${baseUrl.replace(/\/$/, '')}/health`, { timeout: 5000 });
+      await axios.get(`${baseUrl.replace(/\/$/, '')}/health`, { timeout: 15000 });
       this.lastServerCheck = { reachable: true, at: Date.now() };
       return true;
     } catch {

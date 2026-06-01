@@ -1,6 +1,6 @@
 {
   "name": "painel-delivery",
-  "version": "1.0.20",
+  "version": "1.0.24",
   "description": "Sistema de Delivery - Painel Administrativo",
   "main": "electron/main.js",
   "author": "Painel Delivery",
@@ -17,7 +17,6 @@
     "publish": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && node scripts/publish.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.0",
     "electron-updater": "^6.8.3"
   },
   "devDependencies": {

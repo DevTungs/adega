@@ -130,6 +130,20 @@ export async function buildApp() {
   app.get('/api/system/license-health', async (request) => {
     const { licenseService } = await import('./modules/license/license.service');
     const force = (request.query as any)?.force === 'true';
+
+    // Non-blocking: return cached result immediately, refresh in background
+    const cached = licenseService.getCachedServerReachable();
+    if (cached !== null && !force) {
+      // Kick off background refresh (fire-and-forget)
+      licenseService.checkServerReachable(false).catch(() => {});
+      return {
+        reachable: cached,
+        licenseServerUrl: config.licenseApiUrl,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    // First call or forced: must wait for real result
     const reachable = await licenseService.checkServerReachable(force);
     return {
       reachable,

@@ -34,7 +34,7 @@ export function useWebSocket() {
       });
       // Play sound
       try {
-        const audio = new Audio('/sounds/notification.mp3');
+        const audio = new Audio('/sounds/notification.wav');
         audio.play().catch(() => {});
       } catch {}
     });

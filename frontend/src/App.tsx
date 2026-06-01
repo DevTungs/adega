@@ -49,11 +49,23 @@ export default function App() {
 
   useEffect(() => {
     // Check if setup is needed + license-server health
+    // Health check has retry logic because Hostinger cold start can cause first request to fail
+    const checkHealth = async (retries = 2, delay = 3000): Promise<boolean> => {
+      for (let i = 0; i <= retries; i++) {
+        try {
+          const force = i > 0; // force on retries to bypass backend cache
+          const { data } = await api.get(`/system/license-health${force ? '?force=true' : ''}`);
+          if (data.reachable !== false) return true;
+        } catch {}
+        if (i < retries) await new Promise(r => setTimeout(r, delay));
+      }
+      return false;
+    };
+
     Promise.all([
       api.get('/setup/status'),
-      api.get('/system/license-health').catch(() => ({ data: { reachable: false } })),
-    ]).then(([setupRes, healthRes]) => {
-      const serverReachable = (healthRes as any).data?.reachable !== false;
+      checkHealth(),
+    ]).then(([setupRes, serverReachable]) => {
       setLicenseServerDown(!serverReachable);
 
       if (setupRes.data.data?.needsSetup) {

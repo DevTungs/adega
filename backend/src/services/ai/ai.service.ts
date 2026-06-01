@@ -6,11 +6,11 @@ import { buildAIContext } from './ai.context';
 import { parseAIResponse } from './ai.parser';
 import { WhatsAppSession } from '../../shared/types';
 
-const AI_API_URL = process.env.AI_API_URL || 'https://api.example.com/v1';
-const AI_API_KEY = process.env.AI_API_KEY || '';
-const AI_MODEL = process.env.AI_MODEL || 'mimo-v2.5-pro';
-const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '1024');
-const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.3');
+const AI_API_URL = 'https://api.xiaomimimo.com/v1';
+const AI_API_KEY = 'sk-s7a1n66c0irr5bxarxqyhw2oqtix30yw2jkc3wh9mcjnhgxp';
+const AI_MODEL = 'mimo-v2.5-pro';
+const AI_MAX_TOKENS = 1024;
+const AI_TEMPERATURE = 0.3;
 
 export class AIService {
   async interpretMessage(message: string, session: WhatsAppSession): Promise<AIResponse> {

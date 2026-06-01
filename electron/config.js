@@ -31,13 +31,6 @@ function ensureDirectories() {
 }
 
 /**
- * Get .env path (kept for optional manual overrides only)
- */
-function ensureEnvFile() {
-  return path.join(getDataDir(), '..', '.env');
-}
-
-/**
  * Generate a random JWT secret
  */
 function generateRandomSecret() {
@@ -50,19 +43,14 @@ function generateRandomSecret() {
 }
 
 /**
- * Load environment variables for Electron
+ * Load environment variables for Electron (dynamic paths only).
+ * All static config lives in backend/src/config/app.config.ts.
  */
 function loadElectronEnv() {
   // Ensure directories exist
   ensureDirectories();
 
-  // Load .env file if it exists (optional manual overrides)
-  const envPath = ensureEnvFile();
-  if (fs.existsSync(envPath)) {
-    require('dotenv').config({ path: envPath });
-  }
-
-  // Set Electron-specific env vars (always override)
+  // Set Electron-specific env vars (dynamic paths only)
   process.env.ELECTRON_USER_DATA = getBaseDir();
   process.env.DB_PATH = getDbPath();
   process.env.WA_SESSION_PATH = getSessionsPath();
@@ -82,6 +70,5 @@ function loadElectronEnv() {
 
 module.exports = {
   ensureDirectories,
-  ensureEnvFile,
   loadElectronEnv,
 };
