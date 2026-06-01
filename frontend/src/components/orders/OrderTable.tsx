@@ -7,6 +7,7 @@ import { Eye, ChevronRight } from 'lucide-react';
 
 interface Props {
   orders: Order[];
+  orderType: 'delivery' | 'pdv';
   onStatusChange: (id: string, status: OrderStatus) => void;
   onViewDetails: (order: Order) => void;
 }
@@ -27,7 +28,8 @@ const NEXT_STATUS_LABEL: Partial<Record<OrderStatus, string>> = {
   out_for_delivery: 'Entregue',
 };
 
-export default function OrderTable({ orders, onStatusChange, onViewDetails }: Props) {
+export default function OrderTable({ orders, orderType, onStatusChange, onViewDetails }: Props) {
+  const isPDV = orderType === 'pdv';
   const handleAdvance = async (order: Order) => {
     const next = NEXT_STATUS[order.status];
     if (!next) return;
@@ -69,7 +71,7 @@ export default function OrderTable({ orders, onStatusChange, onViewDetails }: Pr
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Itens</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pagamento</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+            {!isPDV && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>}
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data</th>
             <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Ações</th>
           </tr>
@@ -89,9 +91,11 @@ export default function OrderTable({ orders, onStatusChange, onViewDetails }: Pr
               <td className="px-4 py-3 text-sm text-gray-400">
                 {PAYMENT_LABELS[order.payment_method || ''] || 'N/A'}
               </td>
-              <td className="px-4 py-3">
-                <OrderStatusBadge status={order.status} />
-              </td>
+              {!isPDV && (
+                <td className="px-4 py-3">
+                  <OrderStatusBadge status={order.status} />
+                </td>
+              )}
               <td className="px-4 py-3 text-sm text-gray-500">{formatDateTime(order.created_at)}</td>
               <td className="px-4 py-3 text-right">
                 <div className="flex items-center justify-end gap-2">
@@ -102,7 +106,7 @@ export default function OrderTable({ orders, onStatusChange, onViewDetails }: Pr
                   >
                     <Eye size={18} />
                   </button>
-                  {NEXT_STATUS[order.status] && (
+                  {!isPDV && NEXT_STATUS[order.status] && (
                     <button
                       onClick={() => handleAdvance(order)}
                       className="flex items-center gap-1 px-3 py-1 bg-primary-50 text-primary-700 rounded-lg hover:bg-primary-100 text-sm font-medium"
@@ -111,7 +115,7 @@ export default function OrderTable({ orders, onStatusChange, onViewDetails }: Pr
                       <ChevronRight size={14} />
                     </button>
                   )}
-                  {order.status !== 'delivered' && order.status !== 'cancelled' && (
+                  {!isPDV && order.status !== 'delivered' && order.status !== 'cancelled' && (
                     <button
                       onClick={() => handleCancel(order)}
                       className="px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg text-sm"

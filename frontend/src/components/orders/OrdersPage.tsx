@@ -30,16 +30,18 @@ export default function OrdersPage({ orderType, title }: Props) {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">{title}</h1>
         <div className="flex items-center gap-3">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as OrderStatus | '')}
-            className="input w-auto"
-          >
-            <option value="">Todos os status</option>
-            {STATUS_OPTIONS.filter(Boolean).map((s) => (
-              <option key={s} value={s}>{STATUS_LABELS[s!]}</option>
-            ))}
-          </select>
+          {orderType !== 'pdv' && (
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as OrderStatus | '')}
+              className="input w-auto"
+            >
+              <option value="">Todos os status</option>
+              {STATUS_OPTIONS.filter(Boolean).map((s) => (
+                <option key={s} value={s}>{STATUS_LABELS[s!]}</option>
+              ))}
+            </select>
+          )}
           <button onClick={() => fetchOrders({ order_type: orderType })} className="btn-secondary">
             Atualizar
           </button>
@@ -57,6 +59,7 @@ export default function OrdersPage({ orderType, title }: Props) {
       ) : (
         <OrderTable
           orders={orders}
+          orderType={orderType}
           onStatusChange={handleStatusChange}
           onViewDetails={setSelectedOrder}
         />
@@ -65,6 +68,7 @@ export default function OrdersPage({ orderType, title }: Props) {
       {selectedOrder && (
         <OrderDetails
           order={selectedOrder}
+          orderType={orderType}
           onClose={() => setSelectedOrder(null)}
         />
       )}

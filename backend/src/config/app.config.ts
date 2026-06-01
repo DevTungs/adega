@@ -18,7 +18,7 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
 
   // License server — MUDAR AQUI QUANDO MIGRAR PARA VPS
-  licenseApiUrl: process.env.LICENSE_API_URL || 'http://localhost:3400',
+  licenseApiUrl: process.env.LICENSE_API_URL || 'https://royalblue-butterfly-353375.hostingersite.com',
   licenseJwtSecret: process.env.LICENSE_JWT_SECRET || 'delivery-license-secret-2024',
   licenseAppId: process.env.LICENSE_APP_ID || 'delivery',
 

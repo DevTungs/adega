@@ -8,10 +8,12 @@ import api from '../../api/client';
 
 interface Props {
   order: Order;
+  orderType: 'delivery' | 'pdv';
   onClose: () => void;
 }
 
-export default function OrderDetails({ order, onClose }: Props) {
+export default function OrderDetails({ order, orderType, onClose }: Props) {
+  const isPDV = orderType === 'pdv';
   const [printing, setPrinting] = useState(false);
 
   const handlePrint = async () => {
@@ -51,7 +53,7 @@ export default function OrderDetails({ order, onClose }: Props) {
         </div>
         <div className="p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <OrderStatusBadge status={order.status} />
+            {!isPDV && <OrderStatusBadge status={order.status} />}
             <span className="text-sm text-gray-500">{formatDateTime(order.created_at)}</span>
           </div>
 
