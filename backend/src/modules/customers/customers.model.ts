@@ -72,7 +72,8 @@ export class CustomersModel {
   getOrders(customerId: string, limit: number = 10): any[] {
     const db = getDb();
     return db.all(
-      `SELECT * FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT ?`,
+      `SELECT id, order_number, status, order_type, total, created_at
+       FROM orders WHERE customer_id = ? ORDER BY created_at DESC LIMIT ?`,
       [customerId, limit]
     );
   }

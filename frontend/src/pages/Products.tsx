@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { productsApi, categoriesApi } from '../api/products';
 import { Product, Category } from '../types';
 import { formatCurrency } from '../utils/format';
-import { Plus, Edit, Trash2, Search, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Edit, Trash2, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ProductModal from '../components/products/ProductModal';
 import CategoryModal from '../components/categories/CategoryModal';
@@ -16,8 +16,6 @@ export default function Products() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  // Category management state
-  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
@@ -35,7 +33,7 @@ export default function Products() {
       setProducts(prodRes.data.data);
       setCategories(catRes.data.data);
     } catch {
-      toast.error('Erro ao carregar produtos');
+      toast.error('Erro ao carregar dados');
     } finally {
       setIsLoading(false);
     }
@@ -127,34 +125,11 @@ export default function Products() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Produtos</h1>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-white">Categorias</h1>
+        <button onClick={openCreateCategory} className="btn-primary flex items-center gap-2">
           <Plus size={18} />
-          Novo Produto
+          Nova Categoria
         </button>
-      </div>
-
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar produtos..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input pl-10"
-          />
-        </div>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="input w-auto"
-        >
-          <option value="">Todas categorias</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
       </div>
 
       {isLoading ? (
@@ -162,98 +137,115 @@ export default function Products() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
         </div>
       ) : (
-        <div className="card overflow-hidden p-0">
-          <table className="w-full">
-            <thead className="bg-gray-800/50 border-b border-gray-800">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Produto</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Categoria</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Preço</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Estoque</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.map((product) => {
-                const cat = categories.find((c) => c.id === product.category_id);
-                return (
-                  <tr key={product.id} className="hover:bg-gray-800/50">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-white">{product.name}</div>
-                      <div className="text-sm text-gray-400">{product.volume || product.unit}</div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-400">{cat?.name || '-'}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{formatCurrency(product.promo_price ?? product.price)}</div>
-                      {product.promo_price && (
-                        <div className="text-sm text-gray-400 line-through">{formatCurrency(product.price)}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`font-medium ${product.stock <= 5 ? 'text-red-600' : 'text-white'}`}>
-                        {product.stock}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => openEdit(product)} className="p-1 text-gray-400 hover:text-blue-600">
-                          <Edit size={18} />
-                        </button>
-                        <button onClick={() => handleDelete(product.id)} className="p-1 text-gray-400 hover:text-red-600">
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
+        <div className="grid gap-6">
+          <div className="grid gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Categorias ({categories.length})</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {categories.map((cat) => (
+                <div key={cat.id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
+                  <div>
+                    <h3 className="font-medium text-white">{cat.name}</h3>
+                    <p className="text-sm text-gray-400">{cat.description || cat.slug}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => openEditCategory(cat)} className="p-1 text-gray-400 hover:text-blue-600">
+                      <Edit size={18} />
+                    </button>
+                    <button onClick={() => handleDeleteCategory(cat.id)} className="p-1 text-gray-400 hover:text-red-600">
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card overflow-hidden p-0">
+            <div className="flex flex-col gap-3 p-4 border-b border-gray-800 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Produtos ({filtered.length})</h2>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar produtos..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="input pl-10"
+                  />
+                </div>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="input w-full sm:w-auto"
+                >
+                  <option value="">Todas categorias</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+                  <Plus size={18} />
+                  Novo Produto
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-800/50 border-b border-gray-800">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Produto</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Categoria</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Preço</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Estoque</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase">Ações</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filtered.map((product) => {
+                    const cat = categories.find((c) => c.id === product.category_id);
+                    return (
+                      <tr key={product.id} className="hover:bg-gray-800/50">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-white">{product.name}</div>
+                          <div className="text-sm text-gray-400">{product.volume || product.unit}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-400">{cat?.name || '-'}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium">{formatCurrency(product.promo_price ?? product.price)}</div>
+                          {product.promo_price && (
+                            <div className="text-sm text-gray-400 line-through">{formatCurrency(product.price)}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`font-medium ${product.stock <= 5 ? 'text-red-600' : 'text-white'}`}>
+                            {product.stock}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => openEdit(product)} className="p-1 text-gray-400 hover:text-blue-600">
+                              <Edit size={18} />
+                            </button>
+                            <button onClick={() => handleDelete(product.id)} className="p-1 text-gray-400 hover:text-red-600">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
-
-      {/* Categories Section */}
-      <div className="card">
-        <button
-          onClick={() => setCategoriesExpanded(!categoriesExpanded)}
-          className="w-full flex items-center justify-between p-0 bg-transparent border-none cursor-pointer"
-        >
-          <h2 className="text-lg font-semibold text-white">
-            Categorias ({categories.length})
-          </h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={(e) => { e.stopPropagation(); openCreateCategory(); }}
-              className="btn-primary text-sm flex items-center gap-1"
-            >
-              <Plus size={16} />
-              Nova Categoria
-            </button>
-            {categoriesExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-          </div>
-        </button>
-
-        {categoriesExpanded && (
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {categories.map((cat) => (
-              <div key={cat.id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                <div>
-                  <h3 className="font-medium text-white">{cat.name}</h3>
-                  <p className="text-sm text-gray-400">{cat.description || cat.slug}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => openEditCategory(cat)} className="p-1 text-gray-400 hover:text-blue-600">
-                    <Edit size={18} />
-                  </button>
-                  <button onClick={() => handleDeleteCategory(cat.id)} className="p-1 text-gray-400 hover:text-red-600">
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {modalOpen && (
         <ProductModal

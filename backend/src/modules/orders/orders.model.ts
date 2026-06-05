@@ -43,10 +43,30 @@ export class OrdersModel {
       [...params, limit, offset]
     );
 
-    // Load items for each order
+    if (rows.length === 0) return [];
+
+    // Batch load items (single query instead of N)
+    const orderIds = rows.map(r => r.id);
+    const placeholders = orderIds.map(() => '?').join(',');
+    const allItems = db.all(
+      `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, created_at
+       FROM order_items WHERE order_id IN (${placeholders}) ORDER BY created_at ASC`,
+      orderIds
+    );
+
+    const itemsByOrder = new Map<string, any[]>();
+    for (const item of allItems) {
+      const list = itemsByOrder.get(item.order_id);
+      if (list) {
+        list.push(item);
+      } else {
+        itemsByOrder.set(item.order_id, [item]);
+      }
+    }
+
     return rows.map(row => ({
       ...row,
-      items: db.all('SELECT * FROM order_items WHERE order_id = ?', [row.id]),
+      items: itemsByOrder.get(row.id) || [],
     }));
   }
 
@@ -66,7 +86,11 @@ export class OrdersModel {
       [id]
     );
     if (order) {
-      order.items = db.all('SELECT * FROM order_items WHERE order_id = ?', [id]);
+      order.items = db.all(
+        `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, created_at
+         FROM order_items WHERE order_id = ? ORDER BY created_at ASC`,
+        [id]
+      );
     }
     return order;
   }
@@ -81,7 +105,11 @@ export class OrdersModel {
       [orderNumber]
     );
     if (order) {
-      order.items = db.all('SELECT * FROM order_items WHERE order_id = ?', [order.id]);
+      order.items = db.all(
+        `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, created_at
+         FROM order_items WHERE order_id = ? ORDER BY created_at ASC`,
+        [order.id]
+      );
     }
     return order;
   }
@@ -209,13 +237,30 @@ export class OrdersModel {
 
   getActiveOrdersByCustomer(customerId: string): any[] {
     const db = getDb();
-    const orders = db.all(
+    const rows = db.all(
       `SELECT * FROM orders WHERE customer_id = ? AND status NOT IN ('delivered', 'cancelled') ORDER BY created_at DESC`,
       [customerId]
     );
-    return orders.map((row: any) => ({
+    if (rows.length === 0) return [];
+
+    const orderIds = rows.map((r: any) => r.id);
+    const placeholders = orderIds.map(() => '?').join(',');
+    const allItems = db.all(
+      `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, created_at
+       FROM order_items WHERE order_id IN (${placeholders}) ORDER BY created_at ASC`,
+      orderIds
+    );
+
+    const itemsByOrder = new Map<string, any[]>();
+    for (const item of allItems) {
+      const list = itemsByOrder.get(item.order_id);
+      if (list) { list.push(item); }
+      else { itemsByOrder.set(item.order_id, [item]); }
+    }
+
+    return rows.map((row: any) => ({
       ...row,
-      items: db.all('SELECT * FROM order_items WHERE order_id = ?', [row.id]),
+      items: itemsByOrder.get(row.id) || [],
     }));
   }
 

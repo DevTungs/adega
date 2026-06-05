@@ -67,16 +67,13 @@ export class CashRegisterModel {
     const register = this.findById(id);
     if (!register) return null;
 
-    const sales = db.get(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements WHERE cash_register_id = ? AND type = 'sale'`,
-      [id]
-    );
-    const sangria = db.get(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements WHERE cash_register_id = ? AND type = 'sangria'`,
-      [id]
-    );
-    const suprimento = db.get(
-      `SELECT COALESCE(SUM(amount), 0) as total FROM cash_movements WHERE cash_register_id = ? AND type = 'suprimento'`,
+    // Single query for all totals (was 3 separate queries)
+    const totals = db.get(
+      `SELECT
+         COALESCE(SUM(CASE WHEN type = 'sale' THEN amount ELSE 0 END), 0) as total_sales,
+         COALESCE(SUM(CASE WHEN type = 'sangria' THEN amount ELSE 0 END), 0) as total_sangria,
+         COALESCE(SUM(CASE WHEN type = 'suprimento' THEN amount ELSE 0 END), 0) as total_suprimento
+       FROM cash_movements WHERE cash_register_id = ?`,
       [id]
     );
 
@@ -88,18 +85,19 @@ export class CashRegisterModel {
     );
 
     const movements = db.all(
-      `SELECT * FROM cash_movements WHERE cash_register_id = ? ORDER BY created_at ASC`,
+      `SELECT id, cash_register_id, type, amount, description, payment_method, order_id, created_at
+       FROM cash_movements WHERE cash_register_id = ? ORDER BY created_at ASC`,
       [id]
     );
 
-    const expectedClosing = register.opening_amount + sales.total + suprimento.total - sangria.total;
+    const expectedClosing = register.opening_amount + totals.total_sales + totals.total_suprimento - totals.total_sangria;
 
     return {
       register,
       opening_amount: register.opening_amount,
-      total_sales: sales.total,
-      total_sangria: sangria.total,
-      total_suprimento: suprimento.total,
+      total_sales: totals.total_sales,
+      total_sangria: totals.total_sangria,
+      total_suprimento: totals.total_suprimento,
       expected_closing: expectedClosing,
       sales_by_payment: salesByPayment,
       movements,

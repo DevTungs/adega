@@ -49,51 +49,45 @@ export async function initDatabase(): Promise<DatabaseWrapper> {
 
   const wrapper = new DatabaseWrapper(sqlDb);
 
-  // Auto-save every 5 seconds
-  const saveInterval = setInterval(() => wrapper.save(), 5000);
-  (wrapper as any)._saveInterval = saveInterval;
+  // Auto-save every 5 seconds (only writes when dirty)
+  wrapper.setSaveInterval(5000);
 
   // Save on exit (skip signal handlers in Electron — main process handles lifecycle)
   if (!process.versions.electron) {
-    const saveAndExit = () => { wrapper.save(); process.exit(0); };
+    const saveAndExit = () => { wrapper.save(true); process.exit(0); };
     process.on('SIGINT', saveAndExit);
     process.on('SIGTERM', saveAndExit);
   }
-  process.on('exit', () => wrapper.save());
+  process.on('exit', () => wrapper.save(true));
 
   return wrapper;
 }
 
 export class DatabaseWrapper {
   private db: SqlJsDatabase;
-  private autoIncrementCounters: Map<string, number> = new Map();
+  private dirty: boolean = false;
+  private saveInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(db: SqlJsDatabase) {
     this.db = db;
   }
 
-  /** Execute SQL and return rows as objects */
+  /** Execute SQL and return rows as objects (SELECT only) */
   raw(sql: string, params: any[] = []): any[] {
-    try {
-      const stmt = this.db.prepare(sql);
-      if (params.length > 0) stmt.bind(params);
-
-      const rows: any[] = [];
-      while (stmt.step()) {
-        rows.push(stmt.getAsObject());
-      }
-      stmt.free();
-      return rows;
-    } catch {
-      // For INSERT/UPDATE/DELETE/DDL
-      this.db.run(sql, params);
-      return [];
+    const stmt = this.db.prepare(sql);
+    if (params.length > 0) stmt.bind(params);
+    const rows: any[] = [];
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
     }
+    stmt.free();
+    return rows;
   }
 
   /** Execute SQL (INSERT/UPDATE/DELETE/DDL) */
   run(sql: string, params: any[] = []): void {
     this.db.run(sql, params);
+    this.dirty = true;
   }
 
   /** Get a single row */
@@ -141,13 +135,14 @@ export class DatabaseWrapper {
     return next;
   }
 
-  /** Save database to disk */
-  save(): void {
-    if (!this.db) return;
+  /** Save database to disk (skips if no changes unless forced) */
+  save(force: boolean = false): void {
+    if (!this.db || (!this.dirty && !force)) return;
     try {
       const data = this.db.export();
       const buffer = Buffer.from(data);
       fs.writeFileSync(dbPath, buffer);
+      this.dirty = false;
     } catch {
       // Silent fail on save - will retry on next interval
     }
@@ -195,6 +190,12 @@ export class DatabaseWrapper {
     }
   }
 
+  /** Set auto-save interval */
+  setSaveInterval(ms: number): void {
+    if (this.saveInterval) clearInterval(this.saveInterval);
+    this.saveInterval = setInterval(() => this.save(), ms);
+  }
+
   /** Check health */
   async healthCheck(): Promise<boolean> {
     try {
@@ -207,10 +208,11 @@ export class DatabaseWrapper {
 
   /** Close database */
   close(): void {
-    if ((this as any)._saveInterval) {
-      clearInterval((this as any)._saveInterval);
+    if (this.saveInterval) {
+      clearInterval(this.saveInterval);
+      this.saveInterval = null;
     }
-    this.save();
+    this.save(true);
     this.db.close();
   }
 }
