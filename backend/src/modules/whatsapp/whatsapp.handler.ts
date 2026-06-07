@@ -117,6 +117,14 @@ export class WhatsAppHandler {
         const order = await ordersService.getById(context.lastOrderId);
         return messageFormatter.statusUpdate(order.order_number, order.status);
       }
+      // Fallback: look up active orders by customer
+      if (session.customer_id) {
+        const activeOrders = await ordersService.getActiveByCustomer(session.customer_id);
+        if (activeOrders.length > 0) {
+          const order = activeOrders[0];
+          return messageFormatter.statusUpdate(order.order_number, order.status);
+        }
+      }
       return 'Você não tem pedidos ativos no momento. 🛒';
     }
 
@@ -430,10 +438,13 @@ export class WhatsAppHandler {
   private async handleOrderPlaced(phone: string, message: string, session: any): Promise<string> {
     const context = JSON.parse(session.context || '{}');
 
-    // Greetings → reset to idle and show menu
+    // Greetings → go to idle but keep lastOrder for status checking
     const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'hello', 'hi', 'hey', 'eai', 'opa', 'fala'];
     if (greetings.some(g => message.startsWith(g))) {
-      await whatsappSessionService.resetSession(phone);
+      await whatsappSessionService.updateState(phone, 'idle', {
+        lastOrderId: context.lastOrderId,
+        lastOrderNumber: context.lastOrderNumber,
+      });
       const name = context.customerName || 'cliente';
       return `Olá, ${name}! 👋\n\nComo posso ajudar?\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente`;
     }
