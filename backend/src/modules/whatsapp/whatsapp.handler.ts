@@ -6,6 +6,9 @@ import { productsService } from '../products/products.service';
 import { customersService } from '../customers/customers.service';
 import { ordersService } from '../orders/orders.service';
 import { licenseService } from '../license/license.service';
+import { settingsAgent } from '../../services/settings/settings.service';
+import { orderValidator } from '../../services/order-validator/order-validator.service';
+import { AppError } from '../../shared/errors/app-error';
 import { emitAgentRequest } from '../../services/websocket/ws.server';
 import { logger } from '../../shared/middlewares/logger';
 import { normalizePhone } from '../../shared/utils/phone';
@@ -541,6 +544,23 @@ export class WhatsAppHandler {
         product_id: item.product_id,
         quantity: item.quantity,
       }));
+
+      // Validate minimum order and calculate delivery fee
+      const itemsWithPrices = (context.items || []).map((item: any) => ({
+        quantity: item.quantity,
+        unit_price: item.price,
+      }));
+      try {
+        orderValidator.validateOrThrow({
+          items: itemsWithPrices,
+          order_type: 'delivery',
+        });
+      } catch (err: any) {
+        await whatsappSessionService.resetSession(phone);
+        return `❌ ${err.message}`;
+      }
+
+      const deliveryFee = settingsAgent.getDeliveryFee();
 
       const result = await ordersService.create({
         customer_id: customer.id,

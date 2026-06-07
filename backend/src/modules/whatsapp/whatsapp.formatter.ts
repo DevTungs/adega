@@ -1,4 +1,5 @@
 import { Order, OrderStatus } from '../../shared/types';
+import { settingsAgent } from '../../services/settings/settings.service';
 
 export class MessageFormatter {
   catalog(catalog: any[]): string {
@@ -19,29 +20,49 @@ export class MessageFormatter {
 
 
   orderConfirmation(items: Array<{ name: string; quantity: number; price: number; total: number }>, subtotal: number): string {
+    const deliveryFee = settingsAgent.getDeliveryFee();
+    const minOrder = settingsAgent.getMinOrder();
+    const total = subtotal + deliveryFee;
+
     let msg = '📋 *Resumo do Pedido*\n\n';
     for (const item of items) {
       msg += `${item.quantity}x ${item.name} - R$ ${item.total.toFixed(2)}\n`;
     }
     msg += `\n*Subtotal: R$ ${subtotal.toFixed(2)}*`;
+    if (deliveryFee > 0) {
+      msg += `\n🛵 *Taxa de entrega: R$ ${deliveryFee.toFixed(2)}*`;
+    }
+    msg += `\n💰 *Total: R$ ${total.toFixed(2)}*`;
+    if (minOrder > 0 && subtotal < minOrder) {
+      msg += `\n\n⚠️ Pedido mínimo: R$ ${minOrder.toFixed(2)} (falta R$ ${(minOrder - subtotal).toFixed(2)})`;
+    }
     msg += '\n\n✅ Confirmar? (sim/não)';
     return msg;
   }
 
   orderPlaced(order: any, stockWarnings?: Array<{ product_name: string; requested: number; available: number }>): string {
     let msg = `✅ *Pedido #${order.order_number} confirmado!*\n\n` +
-              `⏱️ Previsão: 30-45 minutos\n` +
-              (order.delivery_address ? `📍 ${order.delivery_address}\n\n` : '\n');
+              `⏱️ Previsão: 30-45 minutos\n`;
+
+    if (order.delivery_address) {
+      msg += `📍 ${order.delivery_address}\n`;
+    }
+
+    msg += `\n💰 *Subtotal:* R$ ${Number(order.subtotal).toFixed(2)}`;
+    if (order.delivery_fee > 0) {
+      msg += `\n🛵 *Taxa de entrega:* R$ ${Number(order.delivery_fee).toFixed(2)}`;
+    }
+    msg += `\n💵 *Total:* R$ ${Number(order.total).toFixed(2)}`;
 
     if (stockWarnings && stockWarnings.length > 0) {
-      msg += `⚠️ *Aviso de estoque:*\n`;
+      msg += `\n\n⚠️ *Aviso de estoque:*\n`;
       for (const w of stockWarnings) {
         msg += `• ${w.product_name} — pediu ${w.requested}, tem ${w.available} em estoque\n`;
       }
       msg += `\nEntraremos em contato caso não consigamos atender o pedido completo. 📞\n\n`;
     }
 
-    msg += `Acompanhe pelo menu "Meu Pedido" 📦`;
+    msg += `\nAcompanhe pelo menu "Meu Pedido" 📦`;
     return msg;
   }
 

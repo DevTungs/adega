@@ -26,7 +26,7 @@ export default function Layout() {
             <Link to="/license" className="font-semibold underline">Regularizar licença</Link>
           </div>
         )}
-        <main className="flex-1 p-6 bg-gray-950 overflow-auto">
+        <main className="flex-1 p-6 bg-gray-950 overflow-auto flex flex-col">
           <Outlet />
         </main>
       </div>

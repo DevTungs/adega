@@ -145,7 +145,7 @@ export default function Messages() {
   ));
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden">
+    <div className="flex-1 min-h-0 flex bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden">
       {/* Conversations List */}
       <div className={`${selectedPhone ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 border-r border-gray-800`}>
         {/* Search */}

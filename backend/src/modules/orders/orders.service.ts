@@ -10,6 +10,7 @@ import { logger } from '../../shared/middlewares/logger';
 import { emitOrderNew, emitOrderStatusChanged, emitOrderUpdated, emitStockLow } from '../../services/websocket/ws.server';
 import { printerService } from '../../services/printer/printer.service';
 import { baileysService } from '../../services/whatsapp/baileys.service';
+import { orderValidator } from '../../services/order-validator/order-validator.service';
 
 export class OrdersService {
   async getAll(filters?: { status?: OrderStatus; customer_id?: string; date_from?: string; date_to?: string; order_type?: string; limit?: number; offset?: number }) {
@@ -63,15 +64,24 @@ export class OrdersService {
     const metadata = stockWarnings.length > 0 ? JSON.stringify({ stockWarnings }) : undefined;
 
     const discount = 0;
-    const total = subtotal;
+    const orderType = data.order_type || 'delivery';
+
+    const validated = orderValidator.validateOrThrow({
+      items: items.map(i => ({ quantity: i.quantity, unit_price: i.unit_price })),
+      order_type: orderType,
+    });
+
+    const total = validated.total;
+    const deliveryFee = validated.deliveryFee;
 
     const order = await ordersModel.create({
       ...data,
       items,
       subtotal,
       discount,
+      delivery_fee: deliveryFee,
       total,
-      order_type: data.order_type || 'delivery',
+      order_type: orderType,
       metadata,
     });
 

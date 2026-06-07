@@ -1,6 +1,7 @@
 import { productsService } from '../../modules/products/products.service';
 import { getDb } from '../../config/database';
 import { logger } from '../../shared/middlewares/logger';
+import { settingsAgent } from '../settings/settings.service';
 import {
   PRODUCT_ALIASES,
   CATEGORY_SUGGESTIONS,
@@ -492,16 +493,8 @@ class NLPService {
       lines.push(`• ${item.quantity}x ${item.name} - R$ ${item.total.toFixed(2)}`);
     }
 
-    // Get delivery fee and min order from settings
-    let deliveryFee = 0;
-    let minOrder = 0;
-    try {
-      const db = getDb();
-      const feeRow = db.get('SELECT value FROM settings WHERE key = ?', ['delivery_fee']);
-      const minRow = db.get('SELECT value FROM settings WHERE key = ?', ['min_order']);
-      if (feeRow) deliveryFee = parseFloat(feeRow.value) || 0;
-      if (minRow) minOrder = parseFloat(minRow.value) || 0;
-    } catch { /* ignore */ }
+    const deliveryFee = settingsAgent.getDeliveryFee();
+    const minOrder = settingsAgent.getMinOrder();
 
     lines.push(`\n💰 Subtotal: R$ ${subtotal.toFixed(2)}`);
     if (deliveryFee > 0) {

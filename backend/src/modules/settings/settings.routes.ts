@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../auth/auth.middleware';
 import { getDb } from '../../config/database';
 import { printerService } from '../../services/printer/printer.service';
+import { settingsAgent } from '../../services/settings/settings.service';
 
 export async function registerSettingsRoutes(app: FastifyInstance) {
   // List available printers on this machine
@@ -46,6 +47,8 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
           [key, value, value]
         );
       }
+
+      settingsAgent.invalidateCache();
 
       reply.send({ success: true, message: 'Settings saved' });
     },

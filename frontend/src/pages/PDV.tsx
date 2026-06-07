@@ -204,7 +204,7 @@ export default function PDV() {
   };
 
   return (
-    <div className="h-[calc(100vh-2rem)] flex flex-col gap-4">
+    <div className="flex-1 min-h-0 flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
