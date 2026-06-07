@@ -4,7 +4,7 @@ import { ordersApi } from '../api/orders';
 import { cashRegisterApi } from '../api/cash-register';
 import { Product, Category } from '../types';
 import { formatCurrency } from '../utils/format';
-import { Search, Plus, Minus, Trash2, ShoppingCart, X, CreditCard, Banknote, Smartphone, Wallet, ScanBarcode, Package, Users, UserPlus, ChevronDown } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingCart, X, CreditCard, Banknote, Smartphone, Wallet, ScanBarcode, Package, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 import CashRegisterModal from '../components/cash-register/CashRegisterModal';
 
@@ -18,6 +18,12 @@ interface CartItem {
   product: Product;
   quantity: number;
   splitId: string;
+}
+
+interface PersonSplit {
+  label: string;
+  paymentMethod: string;
+  quantities: Record<string, number>;
 }
 
 const PAYMENT_METHODS = [
@@ -46,6 +52,11 @@ export default function PDV() {
   const [lastOrderNumber, setLastOrderNumber] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Split modal state
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [numPeople, setNumPeople] = useState(2);
+  const [people, setPeople] = useState<PersonSplit[]>([]);
+
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,7 +70,6 @@ export default function PDV() {
     checkCashRegister();
   }, []);
 
-  // F2 to focus search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
@@ -111,12 +121,10 @@ export default function PDV() {
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-
     if (!query.trim()) {
       setSearchResults([]);
       return;
     }
-
     searchTimeoutRef.current = setTimeout(() => {
       const q = normalizeText(query.trim());
       const localResults = products.filter(p =>
@@ -141,7 +149,7 @@ export default function PDV() {
         return;
       }
       if (result.found && result.source === 'api') {
-        toast(`${result.product.name} - não cadastrado. Cadastre em Produtos.`, { icon: '📋' });
+        toast(`${result.product.name} - não cadastrado.`, { icon: '📋' });
       } else {
         toast.error(result.error || 'Produto não encontrado');
       }
@@ -152,26 +160,12 @@ export default function PDV() {
     }
   };
 
-  function ensureDefaultSplit() {
-    setSplitGroups(prev => {
-      if (prev.length > 0) return prev;
-      return [{ id: nextSplitId(), label: 'Pessoa 1', paymentMethod: 'cash' }];
-    });
-  }
-
-  function getDefaultSplitId(): string {
-    if (splitGroups.length > 0) return splitGroups[0].id;
-    const id = nextSplitId();
-    setSplitGroups([{ id, label: 'Pessoa 1', paymentMethod: 'cash' }]);
-    return id;
-  }
-
   const addToCart = (product: Product) => {
-    if (product.stock !== undefined && product.stock <= 0) {
-      toast.error('Produto sem estoque');
-      return;
+    const avail = availableStock(product);
+    if (avail <= 0) {
+      toast(`${product.name} - sem estoque disponível!`, { icon: '⚠️' });
     }
-    const splitId = splitMode ? getDefaultSplitId() : '_single';
+    const splitId = '_single';
     setCart(prev => {
       const existing = prev.find(i => i.product.id === product.id && i.splitId === splitId);
       if (existing) {
@@ -184,16 +178,16 @@ export default function PDV() {
     toast.success(`${product.name} adicionado`);
   };
 
-  const updateQuantity = (productId: string, splitId: string, delta: number) => {
+  const updateQuantity = (productId: string, delta: number) => {
     setCart(prev => prev.map(i => {
-      if (i.product.id !== productId || i.splitId !== splitId) return i;
+      if (i.product.id !== productId || i.splitId !== '_single') return i;
       const newQty = i.quantity + delta;
       return newQty <= 0 ? i : { ...i, quantity: newQty };
     }).filter(i => i.quantity > 0));
   };
 
-  const removeFromCart = (productId: string, splitId: string) => {
-    setCart(prev => prev.filter(i => !(i.product.id === productId && i.splitId === splitId)));
+  const removeFromCart = (productId: string) => {
+    setCart(prev => prev.filter(i => !(i.product.id === productId && i.splitId === '_single')));
   };
 
   const clearCart = () => {
@@ -212,53 +206,136 @@ export default function PDV() {
 
   const totalItems = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart]);
 
-  function enableSplitMode() {
-    if (splitMode) return;
-    const groups: SplitGroup[] = [{ id: nextSplitId(), label: 'Pessoa 1', paymentMethod: singlePaymentMethod }];
-    setSplitGroups(groups);
-    setCart(prev => prev.map(i => ({ ...i, splitId: groups[0].id })));
-    setSplitMode(true);
+  function availableStock(product: Product): number {
+    const base = product.stock ?? 999;
+    const inCart = cart.filter(i => i.product.id === product.id).reduce((sum, i) => sum + i.quantity, 0);
+    return base - inCart;
   }
 
-  function disableSplitMode() {
-    setSplitGroups([]);
-    setCart(prev => {
-      if (prev.length === 0) return prev;
-      return prev.map(i => ({ ...i, splitId: '_single' }));
-    });
-    setSplitMode(false);
-  }
-
-  function addSplitGroup() {
-    const newGroup: SplitGroup = { id: nextSplitId(), label: `Pessoa ${splitGroups.length + 1}`, paymentMethod: 'cash' };
-    setSplitGroups(prev => [...prev, newGroup]);
-  }
-
-  function removeSplitGroup(id: string) {
-    setSplitGroups(prev => {
-      const remaining = prev.filter(g => g.id !== id);
-      if (remaining.length === 0) {
-        disableSplitMode();
-        return [];
+  // Merge same products by product.id in split mode display
+  const cartSummary = useMemo(() => {
+    const map = new Map<string, CartItem>();
+    for (const i of cart) {
+      const k = i.product.id;
+      if (map.has(k)) {
+        map.get(k)!.quantity += i.quantity;
+      } else {
+        map.set(k, { ...i });
       }
-      // Reassign orphaned items to first remaining split
-      setCart(c => c.map(i => i.splitId === id ? { ...i, splitId: remaining[0].id } : i));
-      return remaining;
+    }
+    return Array.from(map.values());
+  }, [cart]);
+
+  // --- Split Modal ---
+
+  function openSplitModal() {
+    const initialPeople: PersonSplit[] = [];
+    for (let i = 0; i < numPeople; i++) {
+      initialPeople.push({
+        label: `Pessoa ${i + 1}`,
+        paymentMethod: i === 0 ? singlePaymentMethod : 'cash',
+        quantities: {},
+      });
+    }
+    setPeople(initialPeople);
+    setShowSplitModal(true);
+  }
+
+  function handleNumPeopleChange(n: number) {
+    const count = Math.max(2, Math.min(10, n));
+    setNumPeople(count);
+    setPeople(prev => {
+      const updated = [...prev];
+      while (updated.length < count) {
+        updated.push({
+          label: `Pessoa ${updated.length + 1}`,
+          paymentMethod: 'cash',
+          quantities: {},
+        });
+      }
+      return updated.slice(0, count);
     });
   }
 
-  function updateSplitLabel(id: string, label: string) {
-    setSplitGroups(prev => prev.map(g => g.id === id ? { ...g, label } : g));
+  function updatePersonLabel(idx: number, label: string) {
+    setPeople(prev => prev.map((p, i) => i === idx ? { ...p, label } : p));
   }
 
-  function updateSplitPayment(id: string, paymentMethod: string) {
-    setSplitGroups(prev => prev.map(g => g.id === id ? { ...g, paymentMethod } : g));
+  function updatePersonPayment(idx: number, pm: string) {
+    setPeople(prev => prev.map((p, i) => i === idx ? { ...p, paymentMethod: pm } : p));
   }
 
-  function assignItemToSplit(productId: string, oldSplitId: string, newSplitId: string) {
-    setCart(prev => prev.map(i =>
-      i.product.id === productId && i.splitId === oldSplitId ? { ...i, splitId: newSplitId } : i
-    ));
+  function updatePersonQuantity(personIdx: number, productId: string, value: number) {
+    const cartItem = cartSummary.find(i => i.product.id === productId);
+    if (!cartItem) return;
+    const max = cartItem.quantity;
+    const clamped = Math.max(0, Math.min(max, value || 0));
+    setPeople(prev => prev.map((p, i) => {
+      if (i !== personIdx) return p;
+      return { ...p, quantities: { ...p.quantities, [productId]: clamped } };
+    }));
+  }
+
+  function getRemainingQuantity(productId: string): number {
+    const cartItem = cartSummary.find(i => i.product.id === productId);
+    if (!cartItem) return 0;
+    const assigned = people.reduce((sum, p) => sum + (p.quantities[productId] || 0), 0);
+    return cartItem.quantity - assigned;
+  }
+
+  function getPersonTotal(person: PersonSplit): number {
+    return Object.entries(person.quantities).reduce((sum, [pid, qty]) => {
+      const item = cartSummary.find(i => i.product.id === pid);
+      if (!item) return sum;
+      const price = item.product.promo_price ?? item.product.price;
+      return sum + price * qty;
+    }, 0);
+  }
+
+  function confirmSplit() {
+    // Validate: all items must be fully assigned
+    for (const item of cartSummary) {
+      const assigned = people.reduce((sum, p) => sum + (p.quantities[item.product.id] || 0), 0);
+      if (assigned !== item.quantity) {
+        toast.error(`${item.product.name}: distribua todas as ${item.quantity} unidades entre as pessoas`);
+        return;
+      }
+    }
+
+    const emptyPeople = people.filter(p => {
+      const total = Object.values(p.quantities).reduce((s, q) => s + q, 0);
+      return total === 0;
+    });
+    if (emptyPeople.length > 0) {
+      toast.error(`Remova pessoas sem itens: ${emptyPeople.map(p => p.label).join(', ')}`);
+      return;
+    }
+
+    // Build split groups and rebuild cart
+    const groups: SplitGroup[] = people.map(p => ({
+      id: nextSplitId(),
+      label: p.label,
+      paymentMethod: p.paymentMethod,
+    }));
+
+    const newCart: CartItem[] = [];
+    for (const item of cartSummary) {
+      for (let pi = 0; pi < people.length; pi++) {
+        const qty = people[pi].quantities[item.product.id] || 0;
+        if (qty > 0) {
+          newCart.push({
+            product: item.product,
+            quantity: qty,
+            splitId: groups[pi].id,
+          });
+        }
+      }
+    }
+
+    setSplitGroups(groups);
+    setCart(newCart);
+    setSplitMode(true);
+    setShowSplitModal(false);
   }
 
   const splitsTotal = useMemo(() => {
@@ -276,16 +353,13 @@ export default function PDV() {
   }, [cart, splitGroups, splitMode]);
 
   const handleFinishSale = async () => {
+    if (!cashRegisterOpen) return toast.error('Abra o caixa antes de finalizar a venda');
     if (cart.length === 0) return toast.error('Adicione itens ao carrinho');
 
     if (splitMode) {
       const unassigned = cart.filter(i => !splitGroups.some(g => g.id === i.splitId));
       if (unassigned.length > 0) {
         return toast.error('Todos os itens devem ser atribuídos a uma pessoa');
-      }
-      const emptyGroups = splitGroups.filter(g => !cart.some(i => i.splitId === g.id));
-      if (emptyGroups.length > 0) {
-        return toast.error(`Remova divisões vazias: ${emptyGroups.map(g => g.label).join(', ')}`);
       }
     }
 
@@ -321,6 +395,7 @@ export default function PDV() {
       setLastOrderNumber(data.data.order_number);
       setShowSuccess(true);
       clearCart();
+      loadData(); // refresh stock from DB
       checkCashRegister();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Erro ao finalizar venda');
@@ -393,7 +468,6 @@ export default function PDV() {
           </button>
         </div>
 
-        {/* Search Results Popup */}
         {searchOpen && searchQuery.trim() && (
           <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 rounded-xl shadow-2xl border border-gray-800 z-50 max-h-[60vh] overflow-y-auto">
             {searchResults.length > 0 ? (
@@ -424,7 +498,7 @@ export default function PDV() {
                         <p className="text-sm text-gray-400">
                           {product.brand && `${product.brand} · `}
                           {product.barcode && `${product.barcode} · `}
-                          Estoque: {product.stock ?? 0}
+                          Estoque: {availableStock(product)}
                         </p>
                       </div>
                       <div className="text-right">
@@ -450,7 +524,6 @@ export default function PDV() {
 
       {/* Main Content: Cart */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Cart Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <ShoppingCart size={20} className="text-gray-400" />
@@ -462,15 +535,12 @@ export default function PDV() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {cart.length > 1 && (
+            {splitMode && (
               <button
-                onClick={splitMode ? disableSplitMode : enableSplitMode}
-                className={`text-sm flex items-center gap-1 px-2 py-1 rounded-lg transition-colors ${
-                  splitMode ? 'bg-primary-600 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
-                }`}
+                onClick={() => { setSplitMode(false); setSplitGroups([]); setCart(prev => prev.map(i => ({ ...i, splitId: '_single' }))); }}
+                className="text-sm text-gray-400 flex items-center gap-1 px-2 py-1 rounded-lg hover:text-gray-200"
               >
-                <Users size={14} />
-                {splitMode ? 'Dividindo' : 'Dividir'}
+                <X size={14} /> Cancelar divisão
               </button>
             )}
             {cart.length > 0 && (
@@ -481,7 +551,6 @@ export default function PDV() {
           </div>
         </div>
 
-        {/* Cart Table */}
         <div className="flex-1 bg-gray-900 rounded-xl border overflow-hidden flex flex-col">
           {cart.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-gray-400">
@@ -500,7 +569,6 @@ export default function PDV() {
                 <thead className="bg-gray-800/50 sticky top-0">
                   <tr>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-400">Produto</th>
-                    {splitMode && <th className="text-left px-4 py-3 text-sm font-medium text-gray-400 w-40">Divisão</th>}
                     <th className="text-center px-4 py-3 text-sm font-medium text-gray-400 w-32">Preço</th>
                     <th className="text-center px-4 py-3 text-sm font-medium text-gray-400 w-40">Quantidade</th>
                     <th className="text-right px-4 py-3 text-sm font-medium text-gray-400 w-32">Total</th>
@@ -508,10 +576,10 @@ export default function PDV() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
-                  {cart.map((item, idx) => {
+                  {cartSummary.map(item => {
                     const price = (item.product.promo_price != null && item.product.promo_price > 0) ? item.product.promo_price : item.product.price;
                     return (
-                      <tr key={`${item.product.id}_${item.splitId}_${idx}`} className="hover:bg-gray-800/50">
+                      <tr key={item.product.id} className="hover:bg-gray-800/50">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {item.product.image_url ? (
@@ -527,33 +595,20 @@ export default function PDV() {
                             </div>
                           </div>
                         </td>
-                        {splitMode && (
-                          <td className="px-4 py-3">
-                            <select
-                              value={item.splitId}
-                              onChange={e => assignItemToSplit(item.product.id, item.splitId, e.target.value)}
-                              className="bg-gray-800 text-white text-sm rounded-lg px-2 py-1.5 border border-gray-700 focus:border-primary-500 focus:outline-none"
-                            >
-                              {splitGroups.map(g => (
-                                <option key={g.id} value={g.id}>{g.label}</option>
-                              ))}
-                            </select>
-                          </td>
-                        )}
                         <td className="px-4 py-3 text-center text-sm text-gray-400">
                           {formatCurrency(price)}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-2">
                             <button
-                              onClick={() => updateQuantity(item.product.id, item.splitId, -1)}
+                              onClick={() => updateQuantity(item.product.id, -1)}
                               className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-200 flex items-center justify-center transition-colors"
                             >
                               <Minus size={16} />
                             </button>
                             <span className="w-10 text-center font-bold text-lg">{item.quantity}</span>
                             <button
-                              onClick={() => updateQuantity(item.product.id, item.splitId, 1)}
+                              onClick={() => updateQuantity(item.product.id, 1)}
                               className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-200 flex items-center justify-center transition-colors"
                             >
                               <Plus size={16} />
@@ -565,7 +620,7 @@ export default function PDV() {
                         </td>
                         <td className="px-2 py-3">
                           <button
-                            onClick={() => removeFromCart(item.product.id, item.splitId)}
+                            onClick={() => removeFromCart(item.product.id)}
                             className="w-8 h-8 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition-colors"
                           >
                             <Trash2 size={16} />
@@ -580,72 +635,38 @@ export default function PDV() {
           )}
         </div>
 
-        {/* Split Groups Cards */}
+        {/* Split Mode: show group cards */}
         {splitMode && splitGroups.length > 0 && (
-          <div className="mt-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-gray-400">Divisão de Pagamentos</p>
-              <button
-                onClick={addSplitGroup}
-                className="text-sm text-primary-600 hover:text-primary-800 flex items-center gap-1"
-              >
-                <UserPlus size={14} /> Adicionar pessoa
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {splitGroups.map(g => {
-                const groupItems = cart.filter(i => i.splitId === g.id);
-                const groupTotal = groupItems.reduce((sum, i) => {
-                  const price = i.product.promo_price ?? i.product.price;
-                  return sum + price * i.quantity;
-                }, 0);
-                return (
-                  <div key={g.id} className="bg-gray-900 rounded-xl border p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <input
-                        type="text"
-                        value={g.label}
-                        onChange={e => updateSplitLabel(g.id, e.target.value)}
-                        className="bg-transparent text-white font-bold text-sm border-b border-dashed border-gray-700 focus:border-primary-500 focus:outline-none"
-                      />
-                      <button
-                        onClick={() => removeSplitGroup(g.id)}
-                        className="text-red-400 hover:text-red-600"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                    <div className="text-xs text-gray-400 space-y-1">
-                      {groupItems.length === 0 ? (
-                        <p className="italic">Nenhum item</p>
-                      ) : (
-                        groupItems.map((i, idx) => {
-                          const price = i.product.promo_price ?? i.product.price;
-                          return (
-                            <div key={idx} className="flex justify-between">
-                              <span>{i.quantity}x {i.product.name}</span>
-                              <span>{formatCurrency(price * i.quantity)}</span>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <select
-                        value={g.paymentMethod}
-                        onChange={e => updateSplitPayment(g.id, e.target.value)}
-                        className="bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-700 focus:border-primary-500 focus:outline-none flex-1"
-                      >
-                        {PAYMENT_METHODS.map(pm => (
-                          <option key={pm.value} value={pm.value}>{pm.label}</option>
-                        ))}
-                      </select>
-                      <span className="text-lg font-bold text-primary-600 whitespace-nowrap">{formatCurrency(groupTotal)}</span>
-                    </div>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {splitGroups.map(g => {
+              const groupItems = cart.filter(i => i.splitId === g.id);
+              const groupTotal = groupItems.reduce((sum, i) => {
+                const price = i.product.promo_price ?? i.product.price;
+                return sum + price * i.quantity;
+              }, 0);
+              return (
+                <div key={g.id} className="bg-gray-900 rounded-xl border border-primary-700 p-4 space-y-2">
+                  <p className="font-bold text-white text-sm">{g.label}</p>
+                  <div className="text-xs text-gray-400 space-y-1">
+                    {groupItems.map((i, idx) => {
+                      const price = i.product.promo_price ?? i.product.price;
+                      return (
+                        <div key={idx} className="flex justify-between">
+                          <span>{i.quantity}x {i.product.name}</span>
+                          <span>{formatCurrency(price * i.quantity)}</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-gray-800">
+                    <span className="text-xs text-gray-400">
+                      {PAYMENT_METHODS.find(p => p.value === g.paymentMethod)?.label || g.paymentMethod}
+                    </span>
+                    <span className="text-lg font-bold text-primary-600">{formatCurrency(groupTotal)}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -655,7 +676,7 @@ export default function PDV() {
             {splitMode ? (
               <div className="flex items-center justify-between gap-6">
                 <div className="text-sm text-gray-400">
-                  <p>Total divisões: <strong className="text-white">{splitGroups.length}</strong></p>
+                  {splitGroups.length} divisão(ões)
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right">
@@ -673,7 +694,6 @@ export default function PDV() {
               </div>
             ) : (
               <div className="flex items-center gap-6">
-                {/* Payment Methods */}
                 <div className="flex-1">
                   <p className="text-xs font-medium text-gray-400 mb-2">Forma de Pagamento</p>
                   <div className="flex gap-2">
@@ -691,10 +711,15 @@ export default function PDV() {
                         {pm.label}
                       </button>
                     ))}
+                    <button
+                      onClick={openSplitModal}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-800 text-primary-600 hover:bg-primary-50 transition-colors"
+                    >
+                      <Users size={16} /> Dividir
+                    </button>
                   </div>
                 </div>
 
-                {/* Total + Finish */}
                 <div className="flex items-center gap-6">
                   <div className="text-right">
                     <p className="text-sm text-gray-400">Total</p>
@@ -746,6 +771,118 @@ export default function PDV() {
               >
                 Fechar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split Modal */}
+      {showSplitModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="p-6 pb-4 border-b border-gray-800">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Dividir Pagamento</h3>
+                <button onClick={() => setShowSplitModal(false)} className="text-gray-400 hover:text-gray-200">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-gray-400 whitespace-nowrap">Quantas pessoas?</label>
+                <input
+                  type="number"
+                  min={2}
+                  max={10}
+                  value={numPeople}
+                  onChange={e => handleNumPeopleChange(parseInt(e.target.value) || 2)}
+                  className="w-20 bg-gray-800 text-white text-lg font-bold text-center rounded-lg px-3 py-2 border border-gray-700 focus:border-primary-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Body: product grid + person columns */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-6">
+                {people.map((person, pi) => (
+                  <div key={pi} className="bg-gray-800/50 rounded-xl p-4 border border-gray-800">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <input
+                        type="text"
+                        value={person.label}
+                        onChange={e => updatePersonLabel(pi, e.target.value)}
+                        className="bg-transparent text-white font-bold text-sm border-b border-dashed border-gray-700 focus:border-primary-500 focus:outline-none"
+                      />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400">Pagamento:</span>
+                        <select
+                          value={person.paymentMethod}
+                          onChange={e => updatePersonPayment(pi, e.target.value)}
+                          className="bg-gray-800 text-white text-xs rounded-lg px-2 py-1.5 border border-gray-700 focus:border-primary-500 focus:outline-none"
+                        >
+                          {PAYMENT_METHODS.map(pm => (
+                            <option key={pm.value} value={pm.value}>{pm.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {cartSummary.map(item => {
+                        const qty = person.quantities[item.product.id] || 0;
+                        const remaining = getRemainingQuantity(item.product.id) + qty;
+                        const price = item.product.promo_price ?? item.product.price;
+                        return (
+                          <div key={item.product.id} className="flex items-center gap-3">
+                            <span className="text-sm text-gray-300 flex-1 min-w-0 truncate">{item.product.name}</span>
+                            <span className="text-xs text-gray-500 w-16 text-right">disp: {remaining}</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => updatePersonQuantity(pi, item.product.id, Math.max(0, qty - 1))}
+                                className="w-7 h-7 rounded bg-gray-800 hover:bg-gray-200 flex items-center justify-center text-sm"
+                                disabled={qty <= 0}
+                              >
+                                <Minus size={12} />
+                              </button>
+                              <span className="w-14 text-center text-white text-sm font-bold">{qty}</span>
+                              <button
+                                onClick={() => updatePersonQuantity(pi, item.product.id, Math.min(remaining, qty + 1))}
+                                className="w-7 h-7 rounded bg-gray-800 hover:bg-gray-200 flex items-center justify-center text-sm"
+                                disabled={qty >= remaining}
+                              >
+                                <Plus size={12} />
+                              </button>
+                            </div>
+                            <span className="text-sm font-bold text-primary-600 w-20 text-right">
+                              {qty > 0 ? formatCurrency(price * qty) : '-'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-3 pt-2 border-t border-gray-700 text-right">
+                      <span className="text-sm text-gray-400">Subtotal: </span>
+                      <span className="text-lg font-bold text-primary-600">{formatCurrency(getPersonTotal(person))}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 pt-4 border-t border-gray-800 flex items-center justify-between">
+              <div className="text-sm text-gray-400">
+                Total: <strong className="text-white">{formatCurrency(subtotal)}</strong>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowSplitModal(false)} className="btn-secondary px-6 py-2">
+                  Cancelar
+                </button>
+                <button onClick={confirmSplit} className="btn-primary px-6 py-2">
+                  Confirmar Divisão
+                </button>
+              </div>
             </div>
           </div>
         </div>

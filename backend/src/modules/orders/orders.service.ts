@@ -11,6 +11,7 @@ import { emitOrderNew, emitOrderStatusChanged, emitOrderUpdated, emitStockLow } 
 import { printerService } from '../../services/printer/printer.service';
 import { baileysService } from '../../services/whatsapp/baileys.service';
 import { orderValidator } from '../../services/order-validator/order-validator.service';
+import { cacheService } from '../../services/cache/cache.service';
 
 export class OrdersService {
   async getAll(filters?: { status?: OrderStatus; customer_id?: string; date_from?: string; date_to?: string; order_type?: string; limit?: number; offset?: number }) {
@@ -108,6 +109,7 @@ export class OrdersService {
       await this.checkAndEmitLowStock(item.product_id);
     }
 
+    cacheService.invalidateCatalog();
     logger.info({ orderId: order.id, orderNumber: order.order_number, stockWarnings: stockWarnings.length }, 'Order created');
 
     // Register cash movements

@@ -42,6 +42,7 @@ export class ProductsService {
     const product = await this.getById(id);
     const previousStock = product.stock;
     await productsModel.updateStock(id, quantity);
+    cacheService.invalidateCatalog();
     stockModel.createMovement({
       product_id: id,
       type: 'adjustment',
