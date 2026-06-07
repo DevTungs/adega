@@ -31,6 +31,7 @@ export class OrdersService {
     customer_id: string;
     items: Array<{ product_id: string; quantity: number; notes?: string }>;
     payment_method?: string;
+    payment_splits?: Array<{ label: string; product_ids: string[]; payment_method: string; total: number }>;
     delivery_address?: string;
     delivery_notes?: string;
     notes?: string;
@@ -83,6 +84,7 @@ export class OrdersService {
       total,
       order_type: orderType,
       metadata,
+      payment_splits: data.payment_splits ? JSON.stringify(data.payment_splits) : undefined,
     });
 
     // Update customer stats
@@ -108,10 +110,16 @@ export class OrdersService {
 
     logger.info({ orderId: order.id, orderNumber: order.order_number, stockWarnings: stockWarnings.length }, 'Order created');
 
-    // Register cash movement if cash register is open
-    if (data.payment_method) {
-      try { await cashRegisterService.addSaleMovement(order.id, order.total, data.payment_method); } catch { /* Cash register not critical */ }
-    }
+    // Register cash movements
+    try {
+      if (data.payment_splits && data.payment_splits.length > 0) {
+        for (const split of data.payment_splits) {
+          await cashRegisterService.addSaleMovement(order.id, split.total, split.payment_method);
+        }
+      } else if (data.payment_method) {
+        await cashRegisterService.addSaleMovement(order.id, order.total, data.payment_method);
+      }
+    } catch { /* Cash register not critical */ }
 
     // Emit WebSocket event
     try { emitOrderNew(order); } catch { /* WS not critical */ }

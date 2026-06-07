@@ -123,6 +123,7 @@ export class OrdersModel {
     customer_id: string;
     items: Array<{ product_id: string; product_name: string; quantity: number; unit_price: number; notes?: string }>;
     payment_method?: string;
+    payment_splits?: string;
     delivery_address?: string;
     delivery_notes?: string;
     notes?: string;
@@ -146,6 +147,7 @@ export class OrdersModel {
       status: 'pending',
       order_type: data.order_type || 'delivery',
       payment_method: data.payment_method || null,
+      payment_splits: data.payment_splits || '[]',
       subtotal: data.subtotal,
       discount: data.discount || 0,
       delivery_fee: data.delivery_fee || 0,

@@ -30,6 +30,13 @@ export type OrderStatus =
 
 export type PaymentMethod = 'cash' | 'credit_card' | 'debit_card' | 'pix' | 'voucher';
 
+export interface PaymentSplit {
+  label: string;
+  product_ids: string[];
+  payment_method: PaymentMethod;
+  total: number;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -102,6 +109,7 @@ export interface Order {
   whatsapp_message_id: string | null;
   notes: string | null;
   cancel_reason: string | null;
+  payment_splits: string;
   metadata: string;
   confirmed_at: string | null;
   preparing_at: string | null;

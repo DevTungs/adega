@@ -6,6 +6,13 @@ import { authMiddleware, getUser } from '../auth/auth.middleware';
 import { validateBody } from '../../shared/middlewares/validation';
 import { licenseOrderMiddleware } from '../license/license.middleware';
 
+const paymentSplitSchema = z.object({
+  label: z.string().min(1),
+  product_ids: z.array(z.string().min(1)).min(1),
+  payment_method: z.string().min(1),
+  total: z.number().min(0),
+});
+
 const createOrderSchema = z.object({
   customer_id: z.string().min(1),
   items: z.array(z.object({
@@ -14,6 +21,7 @@ const createOrderSchema = z.object({
     notes: z.string().optional(),
   })).min(1, 'Pedido deve ter pelo menos 1 item'),
   payment_method: z.string().optional(),
+  payment_splits: z.array(paymentSplitSchema).optional(),
   delivery_address: z.string().optional(),
   delivery_notes: z.string().optional(),
   notes: z.string().optional(),
