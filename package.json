@@ -16,7 +16,7 @@
     "build:all": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && electron-builder --win --publish never",
     "build:all-linux": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && electron-builder --linux --publish never",
     "build:all-both": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && electron-builder --win --linux --publish never",
-    "publish": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && node scripts/publish.js"
+    "publish": "node scripts/trigger-release.js"
   },
   "dependencies": {
     "electron-updater": "^6.8.3"
