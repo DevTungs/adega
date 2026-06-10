@@ -13,12 +13,27 @@ const paymentSplitSchema = z.object({
   total: z.number().min(0),
 });
 
+const halfSchema = z.object({
+  product_id: z.string().min(1),
+  product_name: z.string().min(1),
+});
+
+const itemModifierSchema = z.object({
+  modifier_id: z.string().min(1),
+  option_id: z.string().min(1),
+  option_name: z.string().min(1),
+  price_add: z.number(),
+});
+
 const createOrderSchema = z.object({
   customer_id: z.string().min(1),
   items: z.array(z.object({
     product_id: z.string().min(1),
     quantity: z.number().int().positive(),
     notes: z.string().optional(),
+    variant_id: z.string().optional(),
+    halves: z.array(halfSchema).optional(),
+    modifiers: z.array(itemModifierSchema).optional(),
   })).min(1, 'Pedido deve ter pelo menos 1 item'),
   payment_method: z.string().optional(),
   payment_splits: z.array(paymentSplitSchema).optional(),

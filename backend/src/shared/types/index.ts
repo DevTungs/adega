@@ -215,6 +215,80 @@ export interface StockMovement {
   created_at: string;
 }
 
+export interface ProductVariant {
+  id: string;
+  product_id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  promo_price: number | null;
+  stock: number | null;
+  barcode: string | null;
+  sort_order: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductModifier {
+  id: string;
+  product_id: string;
+  name: string;
+  type: 'single' | 'multiple' | 'required';
+  min_select: number;
+  max_select: number;
+  sort_order: number;
+  is_active: number;
+  creates_splits: number;
+  created_at: string;
+  updated_at: string;
+  options?: ModifierOption[];
+}
+
+export interface ModifierOption {
+  id: string;
+  modifier_id: string;
+  name: string;
+  price_add: number;
+  sort_order: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrderItemSplit {
+  id: string;
+  order_item_id: string;
+  product_id: string | null;
+  modifier_option_id: string | null;
+  name: string;
+  ratio: number;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface OrderItemModifier {
+  id: string;
+  order_item_id: string;
+  modifier_id: string;
+  option_id: string;
+  option_name: string;
+  price_add: number;
+  created_at: string;
+}
+
+export interface ProductWithVariants extends Product {
+  variants?: ProductVariant[];
+  modifiers?: ProductModifier[];
+}
+
+export interface OrderItemWithExtras extends OrderItem {
+  variant_id?: string | null;
+  variant?: ProductVariant | null;
+  halves?: OrderItemSplit[];
+  modifiers?: OrderItemModifier[];
+}
+
 export interface Catalog {
-  categories: (Category & { products: Product[] })[];
+  categories: (Category & { products: ProductWithVariants[] })[];
 }

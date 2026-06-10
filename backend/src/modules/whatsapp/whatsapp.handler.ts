@@ -61,6 +61,10 @@ export class WhatsAppHandler {
         return this.handleIdle(normalizedPhone, normalized, session, senderName);
       case 'awaiting_items':
         return this.handleItemsInput(normalizedPhone, normalized, session);
+      case 'awaiting_variant':
+        return this.handleVariantInput(normalizedPhone, normalized, session);
+      case 'awaiting_modifier':
+        return this.handleModifierInput(normalizedPhone, normalized, session);
       case 'awaiting_confirmation':
         return this.handleConfirmation(normalizedPhone, normalized, session);
       case 'awaiting_name':
@@ -151,6 +155,30 @@ export class WhatsAppHandler {
 
       switch (response.intent) {
         case 'novo_pedido':
+          // Check if products need variant selection (valid: false)
+          const pendingVariant = response.products.find((p: any) => p.valid === false) as any;
+          if (pendingVariant) {
+            const fullProduct = await productsService.getFullProduct(pendingVariant.product_id!);
+
+            await whatsappSessionService.updateState(phone, 'awaiting_variant' as SessionState, {
+              pendingItem: {
+                product: fullProduct,
+                product_id: pendingVariant.product_id,
+                name: pendingVariant.name,
+                quantity: pendingVariant.quantity,
+                price: pendingVariant.price,
+              },
+              items: response.products.filter((p: any) => p.valid !== false).map((p: any) => ({
+                product_id: p.product_id, name: p.name, quantity: p.quantity, price: p.price,
+              })),
+              history: [
+                ...(JSON.parse(session.context || '{}').history || []).slice(-4),
+                { role: 'user', content: message },
+              ],
+            });
+            return response.message;
+          }
+
           // Response has products — save to session
           if (response.products.length > 0) {
             await whatsappSessionService.updateState(phone, 'awaiting_items', {
@@ -159,6 +187,7 @@ export class WhatsAppHandler {
                 name: p.name,
                 quantity: p.quantity,
                 price: p.price,
+                variant_id: p.variant_id,
               })),
               history: [
                 ...(JSON.parse(session.context || '{}').history || []).slice(-4),
@@ -260,6 +289,25 @@ export class WhatsAppHandler {
     // Check if response has stock warning
     const hasStockWarning = aiResponse.message && aiResponse.message.includes('Sem estoque');
 
+    // Check if products need variant selection (valid: false)
+    const pendingVariant = aiResponse.products.find((p: any) => p.valid === false) as any;
+    if (pendingVariant) {
+      const fullProduct = await productsService.getFullProduct(pendingVariant.product_id!);
+
+      await whatsappSessionService.updateState(phone, 'awaiting_variant' as SessionState, {
+        pendingItem: {
+          product: fullProduct,
+          product_id: pendingVariant.product_id,
+          name: pendingVariant.name,
+          quantity: pendingVariant.quantity,
+          price: pendingVariant.price,
+        },
+        items: context.items || [],
+        history: context.history,
+      });
+      return aiResponse.message;
+    }
+
     // NLP/AI returned products — update session
     if (aiResponse.products.length > 0) {
       const newContext: any = {
@@ -268,6 +316,7 @@ export class WhatsAppHandler {
           name: p.name,
           quantity: p.quantity,
           price: p.price,
+          variant_id: p.variant_id,
         })),
         history: context.history,
       };
@@ -348,6 +397,153 @@ export class WhatsAppHandler {
     }
 
     return 'O que deseja fazer?\n\n*Adicionar* - adicionar mais itens\n*Cancelar* - cancelar o pedido';
+  }
+
+  private async handleVariantInput(phone: string, message: string, session: any): Promise<string> {
+    const context = JSON.parse(session.context || '{}');
+    const pendingItem = context.pendingItem;
+    if (!pendingItem) {
+      await whatsappSessionService.updateState(phone, 'awaiting_items', {});
+      return 'Não entendi. Pode repetir seu pedido?';
+    }
+
+    const product = pendingItem.product;
+    if (!product || !product.variants) {
+      // No variants needed anymore, go back to items
+      await whatsappSessionService.updateState(phone, 'awaiting_items', context);
+      return 'Pode continuar seu pedido. O que mais deseja?';
+    }
+
+    // Try to match the user's message to a variant
+    const normalizedMessage = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const matchedVariant = product.variants.find((v: any) => {
+      const vNorm = v.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      return vNorm.includes(normalizedMessage) || normalizedMessage.includes(vNorm);
+    });
+
+    if (!matchedVariant) {
+      const options = product.variants
+        .filter((v: any) => v.is_active)
+        .map((v: any) => `• ${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`)
+        .join('\n');
+      return `Não entendi o tamanho. Para *${product.name}*, temos:\n${options}\n\nQual você quer?`;
+    }
+
+    // Check if the product also has modifiers
+    const itemWithVariant = {
+      ...context.pendingItem,
+      variant_id: matchedVariant.id,
+      name: `${product.name} ${matchedVariant.name}`,
+      price: matchedVariant.promo_price || matchedVariant.price,
+    };
+
+    // If product has required modifiers, ask
+    const requiredMods = (product.modifiers || []).filter((m: any) => m.type === 'required');
+    if (requiredMods.length > 0) {
+      context.pendingItem = itemWithVariant;
+      context.pendingModifierIndex = 0;
+      await whatsappSessionService.updateState(phone, 'awaiting_modifier' as SessionState, context);
+
+      const firstMod = requiredMods[0];
+      const opts = (firstMod.options || [])
+        .filter((o: any) => o.is_active)
+        .map((o: any, i: number) => `*${i + 1}* - ${o.name}${o.price_add > 0 ? ` (+R$ ${o.price_add.toFixed(2)})` : ''}`)
+        .join('\n');
+      return `Escolha *${firstMod.name}*:\n${opts}`;
+    }
+
+    // No modifiers needed — add item to cart
+    const items = context.items || [];
+    items.push(itemWithVariant);
+    context.items = items;
+    delete context.pendingItem;
+    await whatsappSessionService.updateState(phone, 'awaiting_items', context);
+
+    const displayItems = items.map((i: any) => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
+    const subtotal = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
+
+    return `📋 *Pedido:*\n${displayItems}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*\n\n✅ Confirmar?\n➕ Adicionar mais`;
+  }
+
+  private async handleModifierInput(phone: string, message: string, session: any): Promise<string> {
+    const context = JSON.parse(session.context || '{}');
+    const pendingItem = context.pendingItem;
+    const modIndex = context.pendingModifierIndex ?? 0;
+
+    if (!pendingItem || !pendingItem.product) {
+      await whatsappSessionService.updateState(phone, 'awaiting_items', {});
+      return 'Não entendi. Pode repetir seu pedido?';
+    }
+
+    const product = pendingItem.product;
+    const requiredMods = (product.modifiers || []).filter((m: any) => m.type === 'required');
+
+    if (modIndex >= requiredMods.length) {
+      // All modifiers handled — add to cart
+      const items = context.items || [];
+      items.push(pendingItem);
+      context.items = items;
+      delete context.pendingItem;
+      delete context.pendingModifierIndex;
+      await whatsappSessionService.updateState(phone, 'awaiting_items', context);
+
+      const displayItems = items.map((i: any) => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
+      const subtotal = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
+      return `📋 *Pedido:*\n${displayItems}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*\n\n✅ Confirmar?\n➕ Adicionar mais`;
+    }
+
+    const currentMod = requiredMods[modIndex];
+    const opts = (currentMod.options || []).filter((o: any) => o.is_active);
+
+    // Try to match the user's input to an option
+    const normalizedMessage = message.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const matchedOption = opts.find((o: any, i: number) => {
+      const oNorm = o.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      return oNorm.includes(normalizedMessage) || normalizedMessage.includes(oNorm) || normalizedMessage === String(i + 1);
+    });
+
+    if (!matchedOption) {
+      const optsList = opts
+        .map((o: any, i: number) => `*${i + 1}* - ${o.name}${o.price_add > 0 ? ` (+R$ ${o.price_add.toFixed(2)})` : ''}`)
+        .join('\n');
+      return `Opção inválida. Escolha *${currentMod.name}*:\n${optsList}`;
+    }
+
+    // Record the selected modifier
+    if (!pendingItem.modifiers) pendingItem.modifiers = [];
+    pendingItem.modifiers.push({
+      modifier_id: currentMod.id,
+      option_id: matchedOption.id,
+      option_name: matchedOption.name,
+      price_add: matchedOption.price_add,
+    });
+    pendingItem.price += matchedOption.price_add;
+
+    // Move to next modifier
+    context.pendingModifierIndex = modIndex + 1;
+    context.pendingItem = pendingItem;
+    await whatsappSessionService.updateState(phone, 'awaiting_modifier' as SessionState, context);
+
+    if (context.pendingModifierIndex < requiredMods.length) {
+      const nextMod = requiredMods[context.pendingModifierIndex];
+      const nextOpts = (nextMod.options || [])
+        .filter((o: any) => o.is_active)
+        .map((o: any, i: number) => `*${i + 1}* - ${o.name}${o.price_add > 0 ? ` (+R$ ${o.price_add.toFixed(2)})` : ''}`)
+        .join('\n');
+      return `Agora escolha *${nextMod.name}*:\n${nextOpts}`;
+    }
+
+    // All done — add to cart
+    const items = context.items || [];
+    items.push(pendingItem);
+    context.items = items;
+    delete context.pendingItem;
+    delete context.pendingModifierIndex;
+    await whatsappSessionService.updateState(phone, 'awaiting_items', context);
+
+    const displayItems = items.map((i: any) => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
+    const subtotal = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
+    return `📋 *Pedido:*\n${displayItems}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*\n\n✅ Confirmar?\n➕ Adicionar mais`;
   }
 
   private async handleNameInput(phone: string, message: string, session: any, whatsappJid?: string): Promise<string> {
@@ -554,6 +750,9 @@ export class WhatsAppHandler {
       const items = (context.items || []).map((item: any) => ({
         product_id: item.product_id,
         quantity: item.quantity,
+        variant_id: item.variant_id || undefined,
+        halves: item.halves || undefined,
+        modifiers: item.modifiers || undefined,
       }));
 
       // Validate minimum order and calculate delivery fee

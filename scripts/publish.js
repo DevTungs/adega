@@ -1,10 +1,16 @@
 const { execSync } = require('child_process');
+const os = require('os');
 
-const GH_TOKEN = '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';
-process.env.GH_TOKEN = GH_TOKEN;
+const platform = os.platform();
+const buildFlag = platform === 'win32' ? '--win' : '--linux';
 
-console.log('[publish] Building installer and publishing to GitHub...');
-execSync('electron-builder --win --publish always', {
+if (!process.env.GH_TOKEN) {
+  console.error('[publish] GH_TOKEN environment variable is required');
+  process.exit(1);
+}
+
+console.log(`[publish] Building ${platform} installer and publishing to GitHub...`);
+execSync(`npx electron-builder ${buildFlag} --publish always`, {
   stdio: 'inherit',
   env: process.env,
 });

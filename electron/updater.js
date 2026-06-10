@@ -31,6 +31,12 @@ function writeLog(level, msg) {
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true; // Fallback: install on quit if startup update fails
 autoUpdater.disableSignatureVerification = true;
+
+// electron-updater on Linux (AppImage) needs correct channel and feed setup
+if (process.platform === 'linux') {
+  autoUpdater.autoInstallOnAppQuit = false; // AppImage needs explicit quitAndInstall
+}
+
 autoUpdater.logger = {
   info: (msg) => writeLog('INFO', msg),
   warn: (msg) => writeLog('WARN', msg),

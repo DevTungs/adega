@@ -1,6 +1,7 @@
 import { ordersModel } from './orders.model';
 import { customersModel } from '../customers/customers.model';
 import { productsModel } from '../products/products.model';
+import { variantsModel } from '../variants/variants.model';
 import { stockModel } from '../stock/stock.model';
 
 import { cashRegisterService } from '../cash-register/cash-register.service';
@@ -30,7 +31,14 @@ export class OrdersService {
 
   async create(data: {
     customer_id: string;
-    items: Array<{ product_id: string; quantity: number; notes?: string }>;
+    items: Array<{
+      product_id: string;
+      quantity: number;
+      notes?: string;
+      variant_id?: string;
+      halves?: Array<{ product_id: string; product_name: string }>;
+      modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>;
+    }>;
     payment_method?: string;
     payment_splits?: Array<{ label: string; product_ids: string[]; payment_method: string; total: number }>;
     delivery_address?: string;
@@ -40,7 +48,16 @@ export class OrdersService {
     whatsapp_message_id?: string;
   }) {
     // Validate products and calculate totals
-    const items: Array<{ product_id: string; product_name: string; quantity: number; unit_price: number; notes?: string }> = [];
+    const items: Array<{
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      unit_price: number;
+      notes?: string;
+      variant_id?: string;
+      halves?: Array<{ product_id: string; product_name: string }>;
+      modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>;
+    }> = [];
     const stockWarnings: Array<{ product_name: string; requested: number; available: number }> = [];
     let subtotal = 0;
 
@@ -48,19 +65,39 @@ export class OrdersService {
       const product = await productsModel.findById(item.product_id);
       if (!product) throw AppError.badRequest(`Produto não encontrado: ${item.product_id}`);
       if (product.is_active !== 1) throw AppError.badRequest(`Produto inativo: ${product.name}`);
-      if (product.stock < item.quantity) {
-        stockWarnings.push({ product_name: product.name, requested: item.quantity, available: product.stock });
+
+      // Determine unit price: variant price > product price
+      let unitPrice: number;
+      if (item.variant_id) {
+        const variant = await variantsModel.findById(item.variant_id);
+        if (!variant) throw AppError.badRequest(`Variação não encontrada: ${item.variant_id}`);
+        unitPrice = variant.promo_price ?? variant.price;
+        const variantStock = variant.stock;
+        if (variantStock !== null && variantStock < item.quantity) {
+          stockWarnings.push({ product_name: `${product.name} (${variant.name})`, requested: item.quantity, available: variantStock });
+        }
+      } else {
+        unitPrice = product.promo_price ?? product.price;
+        if (product.stock < item.quantity) {
+          stockWarnings.push({ product_name: product.name, requested: item.quantity, available: product.stock });
+        }
       }
 
-      const price = product.promo_price ?? product.price;
+      // Add modifiers price to unit price
+      const modifiersTotal = (item.modifiers || []).reduce((s, m) => s + m.price_add, 0);
+      const finalUnitPrice = unitPrice + modifiersTotal;
+
       items.push({
         product_id: product.id,
         product_name: product.name,
         quantity: item.quantity,
-        unit_price: price,
+        unit_price: finalUnitPrice,
         notes: item.notes,
+        variant_id: item.variant_id || undefined,
+        halves: item.halves,
+        modifiers: item.modifiers,
       });
-      subtotal += price * item.quantity;
+      subtotal += finalUnitPrice * item.quantity;
     }
 
     const metadata = stockWarnings.length > 0 ? JSON.stringify({ stockWarnings }) : undefined;
@@ -93,20 +130,27 @@ export class OrdersService {
 
     // Update stock
     for (const item of items) {
-      const product = await productsModel.findById(item.product_id);
-      const previousStock = product?.stock || 0;
-      await productsModel.updateStock(item.product_id, -item.quantity);
-      stockModel.createMovement({
-        product_id: item.product_id,
-        type: 'sale',
-        quantity: -item.quantity,
-        previous_stock: previousStock,
-        new_stock: previousStock - item.quantity,
-        reference_type: 'order',
-        reference_id: order.id,
-        created_by: 'system',
-      });
-      await this.checkAndEmitLowStock(item.product_id);
+      if (item.variant_id) {
+        const variant = await variantsModel.findById(item.variant_id);
+        if (variant && variant.stock !== null) {
+          await variantsModel.updateStock(item.variant_id, -item.quantity);
+        }
+      } else {
+        const product = await productsModel.findById(item.product_id);
+        const previousStock = product?.stock || 0;
+        await productsModel.updateStock(item.product_id, -item.quantity);
+        stockModel.createMovement({
+          product_id: item.product_id,
+          type: 'sale',
+          quantity: -item.quantity,
+          previous_stock: previousStock,
+          new_stock: previousStock - item.quantity,
+          reference_type: 'order',
+          reference_id: order.id,
+          created_by: 'system',
+        });
+        await this.checkAndEmitLowStock(item.product_id);
+      }
     }
 
     cacheService.invalidateCatalog();
@@ -185,20 +229,27 @@ export class OrdersService {
 
     // Restore stock for each item before cancelling
     for (const item of order.items) {
-      const product = await productsModel.findById(item.product_id);
-      const previousStock = product?.stock || 0;
-      await productsModel.updateStock(item.product_id, item.quantity);
-      stockModel.createMovement({
-        product_id: item.product_id,
-        type: 'cancellation',
-        quantity: item.quantity,
-        previous_stock: previousStock,
-        new_stock: previousStock + item.quantity,
-        reference_type: 'order',
-        reference_id: order.id,
-        created_by: changedBy,
-      });
-      await this.checkAndEmitLowStock(item.product_id);
+      if (item.variant_id) {
+        const variant = await variantsModel.findById(item.variant_id);
+        if (variant && variant.stock !== null) {
+          await variantsModel.updateStock(item.variant_id, item.quantity);
+        }
+      } else {
+        const product = await productsModel.findById(item.product_id);
+        const previousStock = product?.stock || 0;
+        await productsModel.updateStock(item.product_id, item.quantity);
+        stockModel.createMovement({
+          product_id: item.product_id,
+          type: 'cancellation',
+          quantity: item.quantity,
+          previous_stock: previousStock,
+          new_stock: previousStock + item.quantity,
+          reference_type: 'order',
+          reference_id: order.id,
+          created_by: changedBy,
+        });
+        await this.checkAndEmitLowStock(item.product_id);
+      }
     }
 
     // Register cash reversal if cash register is open

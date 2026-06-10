@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  publish:
+  publish-windows:
     runs-on: windows-latest
 
     steps:
@@ -29,7 +29,39 @@ jobs:
       - name: Prune backend
         run: node scripts/prune-backend.js
 
-      - name: Publish
-        run: node scripts/publish.js
+      - name: Build and publish Windows installer
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  publish-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build backend
+        run: npm run build:backend
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Prune backend
+        run: node scripts/prune-backend.js
+
+      - name: Install Linux packaging deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 rpm
+
+      - name: Build and publish Linux installer
+        run: npx electron-builder --linux --publish always
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}

@@ -165,6 +165,8 @@ export async function buildApp() {
   const { registerStockRoutes } = await import('./modules/stock/stock.routes');
   const { registerSupplierRoutes } = await import('./modules/suppliers/suppliers.routes');
   const { registerCashRegisterRoutes } = await import('./modules/cash-register/cash-register.routes');
+  const { registerVariantRoutes } = await import('./modules/variants/variants.routes');
+  const { registerModifierRoutes } = await import('./modules/modifiers/modifiers.routes');
 
   await registerAuthRoutes(app);
   await registerCategoryRoutes(app);
@@ -178,6 +180,8 @@ export async function buildApp() {
   await registerStockRoutes(app);
   await registerSupplierRoutes(app);
   await registerCashRegisterRoutes(app);
+  await registerVariantRoutes(app);
+  await registerModifierRoutes(app);
 
   // WebSocket
   setupWebSocket(app);

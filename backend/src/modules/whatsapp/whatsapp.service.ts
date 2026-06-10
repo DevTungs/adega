@@ -11,6 +11,8 @@ export type SessionState =
   | 'awaiting_address'
   | 'awaiting_payment'
   | 'awaiting_notes'
+  | 'awaiting_variant'
+  | 'awaiting_modifier'
   | 'order_placed';
 
 export class WhatsAppSessionService {

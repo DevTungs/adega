@@ -100,7 +100,15 @@ export class ProductsModel {
   }
 
   delete(id: string): void {
-    qb.update('products', { is_active: 0, updated_at: new Date().toISOString() }, 'id = ?', [id]);
+    const db = getDb();
+    db.run('DELETE FROM modifier_options WHERE modifier_id IN (SELECT id FROM product_modifiers WHERE product_id = ?)', [id]);
+    db.run('DELETE FROM product_modifiers WHERE product_id = ?', [id]);
+    db.run('DELETE FROM product_variants WHERE product_id = ?', [id]);
+    db.run('DELETE FROM product_aliases WHERE product_id = ?', [id]);
+    db.run('DELETE FROM stock_movements WHERE product_id = ?', [id]);
+    db.run('DELETE FROM order_item_modifiers WHERE order_item_id IN (SELECT id FROM order_items WHERE product_id = ?)', [id]);
+    db.run('DELETE FROM order_item_splits WHERE order_item_id IN (SELECT id FROM order_items WHERE product_id = ?)', [id]);
+    db.run('DELETE FROM products WHERE id = ?', [id]);
   }
 
   updateStock(id: string, quantity: number): void {

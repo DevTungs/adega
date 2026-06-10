@@ -1,6 +1,6 @@
 {
   "name": "painel-delivery",
-  "version": "1.0.31",
+  "version": "1.0.40",
   "description": "Sistema de Delivery - Painel Administrativo",
   "main": "electron/main.js",
   "author": "Painel Delivery",
@@ -14,6 +14,8 @@
     "build:backend": "cd backend && npm run build",
     "build:frontend": "cd frontend && npm run build",
     "build:all": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && electron-builder --win --publish never",
+    "build:all-linux": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && electron-builder --linux --publish never",
+    "build:all-both": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && electron-builder --win --linux --publish never",
     "publish": "concurrently \"npm run build:backend\" \"npm run build:frontend\" && node scripts/prune-backend.js && node scripts/publish.js"
   },
   "dependencies": {
@@ -77,6 +79,16 @@
       "signingHashAlgorithms": null,
       "verifyUpdateCodeSignature": false,
       "signAndEditExecutable": false
+    },
+    "linux": {
+      "icon": "electron/icon.svg",
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility",
+      "synopsis": "Painel Delivery - Sistema de Gestao",
+      "description": "Sistema de Delivery e PDV para adegas e estabelecimentos comerciais",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

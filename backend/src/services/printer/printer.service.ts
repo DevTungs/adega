@@ -4,7 +4,7 @@ import {
   CharacterSet,
 } from 'node-thermal-printer';
 
-import { execSync } from 'child_process';
+import { execSync, exec } from 'child_process';
 import { logger } from '../../shared/middlewares/logger';
 import { getDb } from '../../config/database';
 
@@ -183,27 +183,97 @@ class PrinterService {
   // PRINTERS
   // =========================================================
 
-  getAvailablePrinters(): string[] {
+  private getLinuxUsbPrinters(): string[] {
     try {
-      const result = execSync(
-        'powershell -NoProfile -Command "Get-Printer | Select-Object -ExpandProperty Name"',
-        {
-          encoding: 'utf-8',
-          timeout: 10000,
-        }
-      );
+      // Discover USB thermal printers via lpinfo
+      const lpinfo = execSync('lpinfo -v 2>/dev/null', {
+        encoding: 'utf-8',
+        timeout: 5000,
+      });
+      const usbDevices = lpinfo
+        .split('\n')
+        .filter((l) => l.includes('usb') || l.includes('serial'))
+        .map((l) => l.replace(/^.*direct\s+/i, '').trim())
+        .filter(Boolean);
 
-      return result
+      if (usbDevices.length > 0) return usbDevices;
+    } catch {}
+
+    // Fallback: check /dev/usb/lp* devices
+    try {
+      const devs = execSync('ls /dev/usb/lp* 2>/dev/null || ls /dev/lp* 2>/dev/null', {
+        encoding: 'utf-8',
+        timeout: 5000,
+      });
+      return devs
         .split('\n')
         .map((s) => s.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .map((s) => `USB:${s}`);
+    } catch {}
+
+    return [];
+  }
+
+  getAvailablePrinters(): string[] {
+    try {
+      if (process.platform === 'win32') {
+        const result = execSync(
+          'powershell -NoProfile -Command "Get-Printer | Select-Object -ExpandProperty Name"',
+          { encoding: 'utf-8', timeout: 10000 }
+        );
+        return result
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      // Linux / macOS: CUPS
+      const printers: string[] = [];
+      try {
+        const result = execSync('lpstat -e 2>/dev/null', {
+          encoding: 'utf-8',
+          timeout: 10000,
+        });
+        printers.push(
+          ...result
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        );
+      } catch {}
+
+      if (printers.length === 0) {
+        try {
+          const result = execSync('lpstat -p -d 2>/dev/null', {
+            encoding: 'utf-8',
+            timeout: 10000,
+          });
+          printers.push(
+            ...result
+              .split('\n')
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((s) => {
+                const m = s.match(/^printer\s+(\S+)/);
+                return m ? m[1] : s;
+              })
+          );
+        } catch {}
+      }
+
+      // Add USB direct devices for Linux
+      if (process.platform === 'linux') {
+        printers.push(...this.getLinuxUsbPrinters());
+      }
+
+      return [...new Set(printers)];
 
     } catch (err: any) {
       logger.error(
         { error: err.message },
         'Failed to list printers'
       );
-
       return [];
     }
   }
@@ -249,6 +319,10 @@ class PrinterService {
       this.connected =
         await this.printer.isPrinterConnected();
 
+      if (!this.connected && process.platform !== 'win32') {
+        logger.warn('Thermal printer not connected via CUPS, will try raw lp fallback');
+      }
+
       return this.connected;
 
     } catch (err: any) {
@@ -256,90 +330,61 @@ class PrinterService {
         { error: err.message },
         'Printer initialization failed'
       );
-
       return false;
     }
   }
 
   // =========================================================
-  // WINDOWS DRIVER
+  // PLATFORM DRIVER
   // =========================================================
 
-  private getWindowsDriver() {
-    return {
-      getPrinters: () => {
-        try {
-          const result = execSync(
-            'powershell -NoProfile -Command "Get-Printer | Select-Object Name | ConvertTo-Json"',
-            {
-              encoding: 'utf-8',
-              timeout: 10000,
-            }
-          );
+  private sendRaw(data: Buffer, printerName: string): boolean {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
 
-          const printers = JSON.parse(result);
+    const tmpFile = path.join(os.tmpdir(), `ticket_${Date.now()}.bin`);
+    fs.writeFileSync(tmpFile, data);
 
-          const list = Array.isArray(printers)
-            ? printers
-            : [printers];
+    try {
+      if (process.platform === 'win32') {
+        return this.sendRawWindows(data, printerName, tmpFile);
+      }
 
-          return list.map((p: any) => ({
-            name: p.Name,
-            isDefault: false,
-          }));
+      // Linux / macOS: try lp first
+      if (this.sendRawLp(printerName, tmpFile)) return true;
 
-        } catch {
-          return [];
-        }
-      },
+      // Fallback: USB direct write on Linux
+      if (process.platform === 'linux') {
+        return this.sendRawLinuxUsb(data, printerName, tmpFile);
+      }
 
-      getPrinter: (name: string) => ({
-        name,
-        status: 'IDLE',
-      }),
+      return false;
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Raw print failed');
+      return false;
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  }
 
-      printDirect: (options: any) => {
-        try {
-          const printerName =
-            options.printer || options.printerName;
+  private sendRawWindows(data: Buffer, printerName: string, tmpFile: string): boolean {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
 
-          if (!printerName) {
-            throw new Error('Printer not defined');
-          }
+    const escapedPrinter = printerName.replace(/'/g, "''");
+    const escapedFile = tmpFile.replace(/'/g, "''");
+    const psFile = path.join(os.tmpdir(), `print_${Date.now()}.ps1`);
 
-          const fs = require('fs');
-          const path = require('path');
-
-          // options.data is a Buffer with ESC/POS binary commands
-          // Write to temp file as raw bytes, then use PowerShell to send directly to printer port
-          const tmpFile = path.join(
-            process.env.TEMP || '/tmp',
-            `ticket_${Date.now()}.bin`
-          );
-
-          fs.writeFileSync(tmpFile, options.data);
-
-          // Send raw ESC/POS bytes to Windows printer via PrintQueue
-          // This bypasses GDI DrawString and sends binary commands directly
-          const escapedPrinter = printerName.replace(/'/g, "''");
-          const escapedFile = tmpFile.replace(/'/g, "''");
-
-          // Write a PowerShell script to temp file to avoid escaping issues
-          const psFile = path.join(
-            process.env.TEMP || '/tmp',
-            `print_${Date.now()}.ps1`
-          );
-
-          const psScript = `
+    const psScript = `
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Printing
 $printerName = '${escapedPrinter}'
 $file = '${escapedFile}'
-
 $printServer = New-Object System.Printing.PrintServer
 $queue = $printServer.GetPrintQueues() | Where-Object { $_.Name -eq $printerName } | Select-Object -First 1
 if (-not $queue) { throw "Printer '$printerName' not found" }
-
 $bytes = [System.IO.File]::ReadAllBytes($file)
 $job = $queue.AddJob('Ticket')
 $stream = $job.JobStream
@@ -347,40 +392,79 @@ $stream.Write($bytes, 0, $bytes.Length)
 $stream.Close()
 `.trim();
 
-          fs.writeFileSync(psFile, psScript, 'utf-8');
+    fs.writeFileSync(psFile, psScript, 'utf-8');
+    try {
+      execSync(
+        `powershell -NoProfile -ExecutionPolicy Bypass -File "${psFile}"`,
+        { encoding: 'utf-8', timeout: 30000 }
+      );
+      return true;
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Windows raw print failed');
+      return false;
+    } finally {
+      try { fs.unlinkSync(psFile); } catch {}
+    }
+  }
 
-          try {
-            execSync(
-              `powershell -NoProfile -ExecutionPolicy Bypass -File "${psFile.replace(/"/g, '""')}"`,
-              {
-                encoding: 'utf-8',
-                timeout: 30000,
-              }
-            );
-          } finally {
-            try { fs.unlinkSync(psFile); } catch {}
-          }
+  private sendRawLp(printerName: string, tmpFile: string): boolean {
+    try {
+      const escapedName = printerName.replace(/(["\s$`\\])/g, '\\$1');
+      execSync(
+        `lp -d "${escapedName}" -o raw "${tmpFile}" 2>/dev/null`,
+        { encoding: 'utf-8', timeout: 30000 }
+      );
+      return true;
+    } catch (err: any) {
+      logger.warn({ error: err.message }, 'lp raw print failed, trying fallback');
+      return false;
+    }
+  }
 
-          try {
-            fs.unlinkSync(tmpFile);
-          } catch {}
+  private sendRawLinuxUsb(data: Buffer, printerName: string, tmpFile: string): boolean {
+    const fs = require('fs');
 
-          if (options.success) {
-            options.success();
-          }
+    // Check if printerName is a USB device path
+    const usbMatch = printerName.match(/^USB:(.+)$/) || printerName.match(/^\/dev\//);
+    const devicePath = usbMatch ? (usbMatch[1] || printerName) : null;
 
-        } catch (err: any) {
-          logger.error(
-            { error: err.message },
-            'Direct print failed'
-          );
+    if (devicePath && fs.existsSync(devicePath)) {
+      try {
+        fs.writeFileSync(devicePath, data);
+        logger.info({ device: devicePath }, 'USB direct print success');
+        return true;
+      } catch (err: any) {
+        logger.warn({ error: err.message, device: devicePath }, 'USB direct write failed');
+      }
+    }
 
-          if (options.error) {
-            options.error(err.message);
-          }
-        }
-      },
-    };
+    // Try to find first available USB printer device
+    try {
+      const devices = execSync(
+        'ls /dev/usb/lp* 2>/dev/null || ls /dev/lp* 2>/dev/null',
+        { encoding: 'utf-8', timeout: 5000 }
+      );
+      const devs = devices.split('\n').map(s => s.trim()).filter(Boolean);
+      for (const dev of devs) {
+        try {
+          fs.writeFileSync(dev, data);
+          logger.info({ device: dev }, 'USB direct print success (auto-detected)');
+          return true;
+        } catch {}
+      }
+    } catch {}
+
+    // Try using cat command as last resort
+    try {
+      execSync(
+        `cat "${tmpFile}" > /dev/usb/lp0 2>/dev/null || cat "${tmpFile}" > /dev/lp0 2>/dev/null`,
+        { encoding: 'utf-8', timeout: 10000 }
+      );
+      return true;
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'All Linux raw print methods failed');
+      return false;
+    }
   }
 
   // =========================================================
@@ -608,7 +692,6 @@ $stream.Close()
       );
 
       this.logTicket(order, store);
-
       return false;
     }
   }

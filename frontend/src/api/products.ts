@@ -24,6 +24,42 @@ export const productsApi = {
 
   searchByBarcode: (barcode: string) =>
     api.get(`/products/barcode/${barcode}`).then(res => res.data),
+
+  // Variants
+  getVariants: (productId: string) =>
+    api.get(`/products/${productId}/variants`).then(res => res.data),
+
+  createVariant: (data: any) =>
+    api.post('/variants', data).then(res => res.data),
+
+  updateVariant: (id: string, data: any) =>
+    api.put(`/variants/${id}`, data).then(res => res.data),
+
+  deleteVariant: (id: string) =>
+    api.delete(`/variants/${id}`).then(res => res.data),
+
+  // Modifiers
+  getModifiers: (productId: string) =>
+    api.get(`/products/${productId}/modifiers`).then(res => res.data),
+
+  createModifier: (data: any) =>
+    api.post('/modifiers', data).then(res => res.data),
+
+  updateModifier: (id: string, data: any) =>
+    api.put(`/modifiers/${id}`, data).then(res => res.data),
+
+  deleteModifier: (id: string) =>
+    api.delete(`/modifiers/${id}`).then(res => res.data),
+
+  // Modifier Options
+  createModifierOption: (data: any) =>
+    api.post('/modifier-options', data).then(res => res.data),
+
+  updateModifierOption: (id: string, data: any) =>
+    api.put(`/modifier-options/${id}`, data).then(res => res.data),
+
+  deleteModifierOption: (id: string) =>
+    api.delete(`/modifier-options/${id}`).then(res => res.data),
 };
 
 export const categoriesApi = {

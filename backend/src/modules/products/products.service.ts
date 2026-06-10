@@ -1,4 +1,6 @@
 import { productsModel } from './products.model';
+import { variantsModel } from '../variants/variants.model';
+import { modifiersModel } from '../modifiers/modifiers.model';
 import { stockModel } from '../stock/stock.model';
 import { AppError } from '../../shared/errors/app-error';
 import { Product } from '../../shared/types';
@@ -70,6 +72,18 @@ export class ProductsService {
     return catalog;
   }
 
+  async getFullProduct(id: string) {
+    const product = await this.getById(id);
+    return {
+      ...product,
+      variants: variantsModel.findByProduct(id),
+      modifiers: modifiersModel.findByProduct(id).map(m => ({
+        ...m,
+        options: modifiersModel.findOptions(m.id),
+      })),
+    };
+  }
+
   async searchByAlias(query: string) {
     return productsModel.findByAlias(query);
   }
@@ -132,6 +146,11 @@ export class ProductsService {
         volume: row.volume,
         brand: row.brand,
         is_featured: row.is_featured,
+        variants: variantsModel.findByProduct(row.id),
+        modifiers: modifiersModel.findByProduct(row.id).map(m => ({
+          ...m,
+          options: modifiersModel.findOptions(m.id),
+        })),
       });
     }
     return Object.values(groups).sort((a: any, b: any) => a.display_order - b.display_order);

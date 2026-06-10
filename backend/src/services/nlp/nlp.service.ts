@@ -2,6 +2,7 @@ import { productsService } from '../../modules/products/products.service';
 import { getDb } from '../../config/database';
 import { logger } from '../../shared/middlewares/logger';
 import { settingsAgent } from '../settings/settings.service';
+import { AppError } from '../../shared/errors/app-error';
 import {
   PRODUCT_ALIASES,
   CATEGORY_SUGGESTIONS,
@@ -14,6 +15,9 @@ interface ParsedItem {
   quantity: number;
   price: number;
   valid: boolean;
+  variant_id?: string;
+  halves?: Array<{ product_id: string; name: string; quantity: number }>;
+  modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>;
 }
 
 interface ParsedMessage {
@@ -41,6 +45,8 @@ class NLPService {
   private allProducts: any[] = [];
   private dbAliases: Record<string, string> = {};
   private dbCategorySuggestions: Record<string, string[]> = {};
+  private variantAliases: Record<string, { variant: any; product: any }> = {};
+  private modifierOptionAliases: Record<string, { product: any; modifier: any; option: any }> = {};
   private catalogLoaded = false;
 
   private normalize(text: string): string {
@@ -79,6 +85,42 @@ class NLPService {
         }
       }
 
+      // Build variant aliases from products that have variants
+      this.variantAliases = {};
+      for (const cat of this.catalog) {
+        for (const product of (cat.products || [])) {
+          if (product.variants && product.variants.length > 0) {
+            for (const v of product.variants) {
+              if (v.is_active === 0) continue;
+              // "calabresa grande" + "pizza calabresa grande"
+              const keys = [
+                `${this.normalize(product.name)} ${this.normalize(v.name)}`,
+                `${this.normalize(v.name)} ${this.normalize(product.name)}`,
+              ];
+              for (const key of keys) {
+                this.variantAliases[key] = { variant: v, product };
+              }
+            }
+          }
+        }
+      }
+
+      // Build modifier option aliases (flavors for creates_splits modifiers)
+      this.modifierOptionAliases = {};
+      for (const cat of this.catalog) {
+        for (const product of (cat.products || [])) {
+          for (const mod of (product.modifiers || [])) {
+            if (mod.creates_splits && mod.options) {
+              for (const opt of mod.options) {
+                if (opt.is_active === 0) continue;
+                const key = this.normalize(opt.name);
+                this.modifierOptionAliases[key] = { product, modifier: mod, option: opt };
+              }
+            }
+          }
+        }
+      }
+
       this.catalogLoaded = true;
     }
   }
@@ -88,6 +130,57 @@ class NLPService {
 
     const normalized = this.normalize(message);
     const context = session ? JSON.parse(session.context || '{}') : {};
+
+    // 0. Check for half-and-half pattern (meia X meia Y)
+    if (normalized.includes('meia')) {
+      const halfAndHalf = this.extractHalfAndHalf(normalized);
+      if (halfAndHalf) {
+        const product = this.allProducts.find(p => p.id === halfAndHalf.halves[0].product_id);
+        const variant = halfAndHalf.variant_id
+          ? (await import('../../modules/variants/variants.model')).variantsModel.findById(halfAndHalf.variant_id)
+          : null;
+
+        const price = variant ? (variant.promo_price ?? variant.price) : (product ? (product.promo_price ?? product.price) : 0);
+        const modifiersTotal = (halfAndHalf.modifiers || []).reduce((s, m) => s + m.price_add, 0);
+        const displayPrice = price + modifiersTotal;
+
+        const item: ParsedItem = {
+          product_id: product?.id || halfAndHalf.halves[0].product_id,
+          name: halfAndHalf.message,
+          quantity: 1,
+          price: displayPrice,
+          valid: true,
+          variant_id: halfAndHalf.variant_id,
+          halves: halfAndHalf.halves,
+          modifiers: halfAndHalf.modifiers,
+        };
+
+        // If variant not specified, return asking for size
+        if (!halfAndHalf.variant_id && product?.variants && product.variants.length > 0) {
+          const varOptions = product.variants
+            .filter((v: any) => v.is_active)
+            .map((v: any) => `• ${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`)
+            .join('\n');
+          return {
+            intent: 'novo_pedido',
+            products: [item],
+            message: `Qual tamanho para ${halfAndHalf.halves.map(h => h.name).join(' + ')}?\n${varOptions}`,
+            needs_confirmation: false,
+            confidence: 0.9,
+            suggestions: product.variants.map((v: any) => v.name),
+          };
+        }
+
+        return {
+          intent: 'novo_pedido',
+          products: [item],
+          message: `📋 Anotei:\n• 1x ${item.name} - R$ ${displayPrice.toFixed(2)}${halfAndHalf.modifiers?.length ? ` (com ${halfAndHalf.modifiers.map(m => m.option_name).join(', ')})` : ''}\n\n✅ Confirmar?\n➕ Adicionar mais`,
+          needs_confirmation: true,
+          confidence: 0.9,
+          suggestions: [],
+        };
+      }
+    }
 
     // 1. Check for removal intent
     if (this.isRemovalIntent(normalized)) {
@@ -161,8 +254,24 @@ class NLPService {
       const items: ParsedItem[] = [];
       const outOfStock: string[] = [];
       const lowStock: string[] = [];
+      const needsVariant: any[] = [];
 
       for (const e of extracted) {
+        // Check if product has variants and user hasn't specified one
+        if (!e.variant_id && e.product.variants && e.product.variants.length > 0) {
+          needsVariant.push(e);
+          continue;
+        }
+
+        // Determine price: variant price > product price > extracted price
+        let unitPrice = e.price ?? (e.product.promo_price || e.product.price);
+        if (e.variant_id) {
+          const v = e.product.variants?.find((v: any) => v.id === e.variant_id);
+          if (v) unitPrice = v.promo_price ?? v.price;
+        }
+        const modifiersTotal = (e.modifiers || []).reduce((s, m) => s + m.price_add, 0);
+        unitPrice += modifiersTotal;
+
         const stock = e.product.stock ?? 999;
         if (stock <= 0) {
           outOfStock.push(e.product.name);
@@ -172,18 +281,52 @@ class NLPService {
             product_id: e.product.id,
             name: e.product.name,
             quantity: stock,
-            price: e.product.promo_price || e.product.price,
+            price: unitPrice,
             valid: true,
+            variant_id: e.variant_id,
+            modifiers: e.modifiers,
           });
         } else {
           items.push({
             product_id: e.product.id,
             name: e.product.name,
             quantity: e.quantity,
-            price: e.product.promo_price || e.product.price,
+            price: unitPrice,
             valid: true,
+            variant_id: e.variant_id,
+            modifiers: e.modifiers,
           });
         }
+      }
+
+      // If any products need variant selection, ask
+      if (needsVariant.length > 0) {
+        const varList = needsVariant.map(e => {
+          const options = e.product.variants
+            .filter((v: any) => v.is_active)
+            .map((v: any) => `• ${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`)
+            .join('\n');
+          return `*${e.product.name}* tem opções:\n${options}`;
+        }).join('\n\n');
+
+        // Include the pending product info so the WhatsApp handler can transition to awaiting_variant
+        const pendingProducts = needsVariant.map(e => ({
+          product_id: e.product.id,
+          name: e.product.name,
+          quantity: e.quantity,
+          price: e.price ?? (e.product.promo_price || e.product.price),
+          valid: false,
+          modifiers: e.modifiers,
+        }));
+
+        return {
+          intent: 'novo_pedido',
+          products: pendingProducts,
+          message: `${varList}\n\nQual tamanho deseja?`,
+          needs_confirmation: false,
+          confidence: 0.8,
+          suggestions: needsVariant.map((e: any) => e.product.name),
+        };
       }
 
       // If any items are out of stock, warn the customer
@@ -293,11 +436,136 @@ class NLPService {
     };
   }
 
-  private extractProducts(message: string): Array<{ product: any; quantity: number; alias: string; ambiguous?: boolean; options?: any[] }> {
-    const results: Array<{ product: any; quantity: number; alias: string; ambiguous?: boolean; options?: any[] }> = [];
-    const consumedRanges: Array<[number, number]> = []; // track matched character ranges
+  private extractHalfAndHalf(message: string): { halves: Array<{ product_id: string; name: string; quantity: number }>; variant_id?: string; message: string; modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }> } | null {
+    // Pattern: "meia X (e) meia Y", "meio X e meio Y", "1/2 X e 1/2 Y"
+    const halfPattern = /meia\s+(.+?)(?:\s+e\s+|\s+meia\s+)(.+)/i;
+    const match = message.match(halfPattern);
+    if (!match) return null;
 
-    // Merge DB aliases with static aliases, sort by length (longest first)
+    const half1 = this.normalize(match[1].trim());
+    const half2 = this.normalize(match[2].trim());
+
+    if (!half1 || !half2) return null;
+
+    // Look for a variant (size) in the message
+    let variantId: string | undefined;
+    let sizeName = '';
+
+    for (const [key, data] of Object.entries(this.variantAliases)) {
+      if (message.includes(key)) {
+        variantId = data.variant.id;
+        sizeName = data.variant.name;
+        break;
+      }
+    }
+
+    // Try to match halves as modifier options (flavors) first
+    const mod1 = this.modifierOptionAliases[half1];
+    const mod2 = this.modifierOptionAliases[half2];
+
+    if (mod1 && mod2 && mod1.product.id === mod2.product.id) {
+      const product = mod1.product;
+      return {
+        halves: [
+          { product_id: product.id, name: mod1.option.name, quantity: 1 },
+          { product_id: product.id, name: mod2.option.name, quantity: 1 },
+        ],
+        variant_id: variantId,
+        message: `${product.name} ${sizeName ? sizeName + ' ' : ''}(meia ${mod1.option.name} + meia ${mod2.option.name})`,
+        modifiers: [
+          { modifier_id: mod1.modifier.id, option_id: mod1.option.id, option_name: mod1.option.name, price_add: mod1.option.price_add },
+          { modifier_id: mod2.modifier.id, option_id: mod2.option.id, option_name: mod2.option.name, price_add: mod2.option.price_add },
+        ],
+      };
+    }
+
+    // Fallback: try to find the products for each half
+    const product1 = this.findProductByName(half1);
+    const product2 = this.findProductByName(half2);
+
+    if (!product1 || !product2) return null;
+
+    return {
+      halves: [
+        { product_id: product1.id, name: product1.name, quantity: 1 },
+        { product_id: product2.id, name: product2.name, quantity: 1 },
+      ],
+      variant_id: variantId,
+      message: `Pizza ${sizeName ? sizeName + ' ' : ''}(meia ${product1.name} + meia ${product2.name})`,
+    };
+  }
+
+  private extractModifiers(message: string, productId?: string): Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }> {
+    if (!productId) return [];
+    const product = this.allProducts.find((p: any) => p.id === productId);
+    if (!product || !product.modifiers) return [];
+
+    const result: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }> = [];
+
+    for (const mod of product.modifiers) {
+      if (!mod.options) continue;
+      for (const opt of mod.options) {
+        if (!opt.is_active) continue;
+        const optNorm = this.normalize(opt.name);
+        if (message.includes(optNorm)) {
+          result.push({
+            modifier_id: mod.id,
+            option_id: opt.id,
+            option_name: opt.name,
+            price_add: opt.price_add,
+          });
+        }
+      }
+    }
+
+    return result;
+  }
+
+  private findProductByName(normalizedName: string): any | null {
+    // Try exact match first
+    for (const p of this.allProducts) {
+      if (this.normalize(p.name) === normalizedName) return p;
+    }
+    // Try substring
+    for (const p of this.allProducts) {
+      const nameNorm = this.normalize(p.name);
+      if (nameNorm.includes(normalizedName) || normalizedName.includes(nameNorm)) return p;
+    }
+    return null;
+  }
+
+  private extractProducts(message: string): Array<{ product: any; quantity: number; alias: string; ambiguous?: boolean; options?: any[]; variant_id?: string; modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>; price?: number }> {
+    const results: Array<{ product: any; quantity: number; alias: string; ambiguous?: boolean; options?: any[]; variant_id?: string; modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>; price?: number }> = [];
+    const consumedRanges: Array<[number, number]> = [];
+
+    // 1. Try variant aliases first (longest, most specific: "calabresa grande")
+    const sortedVariants = Object.entries(this.variantAliases)
+      .sort((a, b) => b[0].length - a[0].length);
+
+    for (const [variantAlias, data] of sortedVariants) {
+      const idx = message.indexOf(variantAlias);
+      if (idx === -1) continue;
+
+      const rangeEnd = idx + variantAlias.length;
+      const overlaps = consumedRanges.some(([start, end]) =>
+        (idx >= start && idx < end) || (rangeEnd > start && rangeEnd <= end) || (idx <= start && rangeEnd >= end)
+      );
+      if (overlaps) continue;
+
+      const before = message.substring(0, idx).trim();
+      const quantity = this.extractQuantity(before);
+
+      results.push({
+        product: data.product,
+        quantity,
+        alias: variantAlias,
+        variant_id: data.variant.id,
+      });
+
+      consumedRanges.push([idx, rangeEnd]);
+    }
+
+    // 2. Merge DB aliases with static aliases, sort by length (longest first)
     const allAliases = { ...this.dbAliases, ...PRODUCT_ALIASES };
     const sortedAliases = Object.entries(allAliases)
       .sort((a, b) => b[0].length - a[0].length);
@@ -381,6 +649,37 @@ class NLPService {
           alias: messageNorm,
         });
         matchedProductIds.add(best.id);
+      }
+    }
+
+    // If still no match, try modifier option aliases (flavors from creates_splits modifiers)
+    if (results.length === 0) {
+      const words = message.split(' ').filter(w => w.length >= 2);
+      for (const word of words) {
+        const match = this.modifierOptionAliases[word];
+        if (match && !matchedProductIds.has(match.product.id)) {
+          const idx = message.indexOf(word);
+          const before = idx > 0 ? message.substring(0, idx).trim() : '';
+          const quantity = this.extractQuantity(before);
+
+          // Include the modifier selection
+          const price = match.product.promo_price ?? match.product.price;
+
+          results.push({
+            product: match.product,
+            quantity,
+            alias: word,
+            modifiers: [{
+              modifier_id: match.modifier.id,
+              option_id: match.option.id,
+              option_name: match.option.name,
+              price_add: match.option.price_add,
+            }],
+            price: price + match.option.price_add,
+          });
+          matchedProductIds.add(match.product.id);
+          break; // single product match
+        }
       }
     }
 

@@ -485,37 +485,49 @@ app.whenReady().then(async () => {
       const { autoUpdater } = require('electron-updater');
       const installerPath = autoUpdater.installerPath;
 
-      // Show dedicated update screen so user sees feedback
+      console.log(`[Electron] Update downloaded. Platform: ${process.platform}, installerPath: ${installerPath}`);
+
       mainWindow.loadURL(`data:text/html,${encodeURIComponent(UPDATE_HTML)}`);
+      await new Promise(r => setTimeout(r, 1500));
 
-      if (installerPath && fs.existsSync(installerPath)) {
-        // Prevent autoInstallOnAppQuit from spawning a second (silent) installer
-        autoUpdater.autoInstallOnAppQuit = false;
+      if (process.platform === 'win32') {
+        // Windows NSIS: spawn installer with UI flags, then quit
+        if (installerPath && fs.existsSync(installerPath)) {
+          autoUpdater.autoInstallOnAppQuit = false;
+          console.log('[Electron] Spawning Windows installer:', installerPath);
 
-        console.log('[Electron] Installer path:', installerPath);
-
-        // Give user time to see the update screen before launching installer
-        await new Promise(r => setTimeout(r, 2000));
-
-        // Spawn installer with --updated --force-run (no /S = shows NSIS UI)
-        const { spawn } = require('child_process');
-        const installer = spawn(installerPath, ['--updated', '--force-run'], {
-          detached: true,
-          stdio: 'ignore',
-          shell: true,
-        });
-        installer.unref();
-        console.log('[Electron] Installer spawned with UI flags');
-
-        // Wait for installer window to appear, then quit
-        await new Promise(r => setTimeout(r, 2000));
-        app.quit();
+          const { spawn } = require('child_process');
+          const installer = spawn(installerPath, ['--updated', '--force-run'], {
+            detached: true,
+            stdio: 'ignore',
+            shell: true,
+          });
+          installer.unref();
+          console.log('[Electron] Installer spawned with UI flags');
+          await new Promise(r => setTimeout(r, 2000));
+          app.quit();
+        } else {
+          console.log('[Electron] No installer path found, using quitAndInstall');
+          autoUpdater.quitAndInstall(false, true);
+        }
+      } else if (process.platform === 'linux') {
+        // Linux (AppImage): ensure the downloaded file is executable, then swap
+        try {
+          if (installerPath && fs.existsSync(installerPath)) {
+            fs.chmodSync(installerPath, 0o755);
+            console.log('[Electron] Made AppImage executable:', installerPath);
+          }
+        } catch (err) {
+          console.error('[Electron] Failed to chmod AppImage:', err);
+        }
+        console.log('[Electron] Using quitAndInstall for Linux AppImage swap');
+        autoUpdater.quitAndInstall(false, true);
       } else {
-        console.warn('[Electron] Installer path not found, falling back to quitAndInstall');
-        await new Promise(r => setTimeout(r, 1500));
+        // macOS: let electron-updater handle the swap
+        console.log(`[Electron] Using quitAndInstall for ${process.platform}`);
         autoUpdater.quitAndInstall(false, true);
       }
-      return; // App will restart
+      return;
     }
   }
 

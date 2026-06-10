@@ -1,6 +1,7 @@
 import { getDb, qb } from '../../config/database';
 import { v4 as uuid } from 'uuid';
 import { Order, OrderItem, OrderStatus } from '../../shared/types';
+import { modifiersModel } from '../modifiers/modifiers.model';
 
 export class OrdersModel {
   findAll(filters?: { status?: OrderStatus; customer_id?: string; date_from?: string; date_to?: string; order_type?: string; limit?: number; offset?: number }): any[] {
@@ -49,13 +50,15 @@ export class OrdersModel {
     const orderIds = rows.map(r => r.id);
     const placeholders = orderIds.map(() => '?').join(',');
     const allItems = db.all(
-      `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, created_at
+      `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, variant_id, created_at
        FROM order_items WHERE order_id IN (${placeholders}) ORDER BY created_at ASC`,
       orderIds
     );
 
+    const enrichedItems = this.attachItemExtras(allItems);
+
     const itemsByOrder = new Map<string, any[]>();
-    for (const item of allItems) {
+    for (const item of enrichedItems) {
       const list = itemsByOrder.get(item.order_id);
       if (list) {
         list.push(item);
@@ -76,6 +79,51 @@ export class OrdersModel {
     return qb.count('orders', where, params);
   }
 
+  private attachItemExtras(items: any[]): any[] {
+    if (items.length === 0) return items;
+    const db = getDb();
+    const itemIds = items.map(i => i.id);
+    const placeholders = itemIds.map(() => '?').join(',');
+
+    const halves = db.all(
+      `SELECT * FROM order_item_splits WHERE order_item_id IN (${placeholders}) ORDER BY sort_order ASC`,
+      itemIds
+    );
+    const modifiers = db.all(
+      `SELECT * FROM order_item_modifiers WHERE order_item_id IN (${placeholders}) ORDER BY created_at ASC`,
+      itemIds
+    );
+    const variants = db.all(
+      `SELECT * FROM product_variants WHERE id IN (${placeholders})`,
+      items.filter(i => i.variant_id).map(i => i.variant_id)
+    );
+
+    const halvesByItem = new Map<string, any[]>();
+    for (const h of halves) {
+      const list = halvesByItem.get(h.order_item_id) || [];
+      list.push(h);
+      halvesByItem.set(h.order_item_id, list);
+    }
+
+    const modsByItem = new Map<string, any[]>();
+    for (const m of modifiers) {
+      const list = modsByItem.get(m.order_item_id) || [];
+      list.push(m);
+      modsByItem.set(m.order_item_id, list);
+    }
+
+    const variantMap = new Map<string, any>();
+    for (const v of variants) variantMap.set(v.id, v);
+
+    return items.map(item => ({
+      ...item,
+      variant_id: item.variant_id || null,
+      variant: item.variant_id ? (variantMap.get(item.variant_id) || null) : null,
+      halves: halvesByItem.get(item.id) || [],
+      modifiers: modsByItem.get(item.id) || [],
+    }));
+  }
+
   findById(id: string): any {
     const db = getDb();
     const order = db.get(
@@ -86,11 +134,11 @@ export class OrdersModel {
       [id]
     );
     if (order) {
-      order.items = db.all(
-        `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, created_at
+      order.items = this.attachItemExtras(db.all(
+        `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, variant_id, created_at
          FROM order_items WHERE order_id = ? ORDER BY created_at ASC`,
         [id]
-      );
+      ));
     }
     return order;
   }
@@ -105,11 +153,11 @@ export class OrdersModel {
       [orderNumber]
     );
     if (order) {
-      order.items = db.all(
-        `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, created_at
+      order.items = this.attachItemExtras(db.all(
+        `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, variant_id, created_at
          FROM order_items WHERE order_id = ? ORDER BY created_at ASC`,
         [order.id]
-      );
+      ));
     }
     return order;
   }
@@ -121,7 +169,16 @@ export class OrdersModel {
 
   create(data: {
     customer_id: string;
-    items: Array<{ product_id: string; product_name: string; quantity: number; unit_price: number; notes?: string }>;
+    items: Array<{
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      unit_price: number;
+      notes?: string;
+      variant_id?: string;
+      halves?: Array<{ product_id: string; product_name?: string; name?: string }>;
+      modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>;
+    }>;
     payment_method?: string;
     payment_splits?: string;
     delivery_address?: string;
@@ -171,17 +228,72 @@ export class OrdersModel {
 
     // Insert items
     for (const item of data.items) {
+      const orderItemId = uuid();
       qb.insert('order_items', {
-        id: uuid(),
+        id: orderItemId,
         order_id: id,
         product_id: item.product_id,
         product_name: item.product_name,
         quantity: item.quantity,
         unit_price: item.unit_price,
-        total_price: item.quantity * item.unit_price,
+        total_price: (item.unit_price * item.quantity) + (item.modifiers || []).reduce((s, m) => s + m.price_add * item.quantity, 0),
+        variant_id: item.variant_id || null,
         notes: item.notes || null,
         created_at: now,
       });
+
+      // Insert halves (meia-meia)
+      if (item.halves && item.halves.length > 0) {
+        for (const half of item.halves) {
+          qb.insert('order_item_splits', {
+            id: uuid(),
+            order_item_id: orderItemId,
+            product_id: half.product_id,
+            modifier_option_id: null,
+            name: half.product_name || half.name,
+            ratio: 1 / item.halves.length,
+            sort_order: item.halves.indexOf(half) + 1,
+            created_at: now,
+          });
+        }
+      }
+
+      // Insert modifiers
+      if (item.modifiers && item.modifiers.length > 0) {
+        for (const mod of item.modifiers) {
+          qb.insert('order_item_modifiers', {
+            id: uuid(),
+            order_item_id: orderItemId,
+            modifier_id: mod.modifier_id,
+            option_id: mod.option_id,
+            option_name: mod.option_name,
+            price_add: mod.price_add,
+            created_at: now,
+          });
+        }
+      }
+
+      // Create splits from modifiers with creates_splits
+      if (item.modifiers && item.modifiers.length > 0) {
+        const splitMods = item.modifiers.filter(m => {
+          const modifier = modifiersModel.findById(m.modifier_id);
+          return modifier && modifier.creates_splits;
+        });
+        if (splitMods.length > 0) {
+          for (const sm of splitMods) {
+            qb.insert('order_item_splits', {
+              id: uuid(),
+              order_item_id: orderItemId,
+              product_id: item.product_id,
+              modifier_option_id: sm.option_id,
+              name: sm.option_name,
+              ratio: 1 / splitMods.length,
+              sort_order: splitMods.indexOf(sm) + 1,
+              created_at: now,
+            });
+          }
+        }
+      }
     }
 
     // Status history
@@ -248,13 +360,14 @@ export class OrdersModel {
     const orderIds = rows.map((r: any) => r.id);
     const placeholders = orderIds.map(() => '?').join(',');
     const allItems = db.all(
-      `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, created_at
+      `SELECT id, order_id, product_id, product_name, quantity, unit_price, total_price, notes, variant_id, created_at
        FROM order_items WHERE order_id IN (${placeholders}) ORDER BY created_at ASC`,
       orderIds
     );
 
+    const enrichedItems = this.attachItemExtras(allItems);
     const itemsByOrder = new Map<string, any[]>();
-    for (const item of allItems) {
+    for (const item of enrichedItems) {
       const list = itemsByOrder.get(item.order_id);
       if (list) { list.push(item); }
       else { itemsByOrder.set(item.order_id, [item]); }

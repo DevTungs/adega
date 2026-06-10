@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.41)'
+        required: true
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Update version (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          cd backend && npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          cd ../frontend && npm version ${{ github.event.inputs.version }} --no-git-tag-version
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build backend and frontend
+        run: |
+          npm run build:backend
+          npm run build:frontend
+          node scripts/prune-backend.js
+
+      - name: Publish Linux (AppImage)
+        run: node scripts/publish.js
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Update version (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          cd backend && npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          cd ../frontend && npm version ${{ github.event.inputs.version }} --no-git-tag-version
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build backend and frontend
+        run: |
+          npm run build:backend
+          npm run build:frontend
+          node scripts/prune-backend.js
+
+      - name: Publish Windows (NSIS)
+        run: node scripts/publish.js
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
