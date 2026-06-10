@@ -22,10 +22,13 @@ jobs:
 
       - name: Update version (workflow_dispatch only)
         if: github.event_name == 'workflow_dispatch'
+        shell: bash
         run: |
-          npm version ${{ github.event.inputs.version }} --no-git-tag-version
-          cd backend && npm version ${{ github.event.inputs.version }} --no-git-tag-version
-          cd ../frontend && npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          VER=${{ github.event.inputs.version }}
+          VER="${VER#v}"
+          npm pkg set version="$VER"
+          cd backend && npm pkg set version="$VER"
+          cd ../frontend && npm pkg set version="$VER"
 
       - name: Install root dependencies
         run: npm ci
@@ -60,10 +63,13 @@ jobs:
 
       - name: Update version (workflow_dispatch only)
         if: github.event_name == 'workflow_dispatch'
+        shell: bash
         run: |
-          npm version ${{ github.event.inputs.version }} --no-git-tag-version
-          cd backend && npm version ${{ github.event.inputs.version }} --no-git-tag-version
-          cd ../frontend && npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          VER=${{ github.event.inputs.version }}
+          VER="${VER#v}"
+          npm pkg set version="$VER"
+          cd backend && npm pkg set version="$VER"
+          cd ../frontend && npm pkg set version="$VER"
 
       - name: Install root dependencies
         run: npm ci
