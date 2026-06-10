@@ -3,7 +3,14 @@ import path from 'path';
 import fs from 'fs';
 import { config } from '../../config/app.config';
 
-const logsDir = path.resolve(__dirname, '../../../data/logs');
+let logsDir: string;
+if (config.logsPath) {
+  logsDir = config.logsPath;
+} else if (config.electronUserData) {
+  logsDir = path.join(config.electronUserData, 'data', 'logs');
+} else {
+  logsDir = path.resolve(__dirname, '../../../data/logs');
+}
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }

@@ -32,6 +32,9 @@ export const config = {
   frontendUrl: 'http://localhost:3333',
   frontendPath: process.env.FRONTEND_PATH || null,
 
+  // Logs
+  logsPath: process.env.LOGS_PATH || null,
+
   // Uploads / Backup
   uploadsPath: process.env.UPLOADS_PATH || null,
   backupPath: process.env.BACKUP_PATH || null,

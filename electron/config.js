@@ -55,6 +55,7 @@ function loadElectronEnv() {
   process.env.DB_PATH = getDbPath();
   process.env.WA_SESSION_PATH = getSessionsPath();
   process.env.BACKUP_PATH = getBackupsPath();
+  process.env.LOGS_PATH = getLogsPath();
   process.env.NODE_ENV = 'production';
   process.env.PORT = process.env.PORT || '3333';
   process.env.HOST = '127.0.0.1';
