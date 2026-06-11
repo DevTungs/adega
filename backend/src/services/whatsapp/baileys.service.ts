@@ -1,11 +1,4 @@
-import makeWASocket, {
-  DisconnectReason,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  Browsers,
-  WASocket,
-  proto,
-} from '@whiskeysockets/baileys';
+import type { WASocket, proto } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import path from 'path';
 import fs from 'fs';
@@ -32,6 +25,28 @@ interface PendingMessage {
   message: string;
   jid: string;
   attempts: number;
+}
+
+let _bMod: any = null;
+let _makeWASocket: any = null;
+let _DisconnectReason: any = null;
+let _useMultiFileAuthState: any = null;
+let _Browsers: any = null;
+let _proto: any = null;
+let _generateWAMessageFromContent: any = null;
+let _isJidGroup: any = null;
+
+async function loadBaileys() {
+  if (!_bMod) {
+    _bMod = await import('@whiskeysockets/baileys');
+    _makeWASocket = _bMod.default;
+    _DisconnectReason = _bMod.DisconnectReason;
+    _useMultiFileAuthState = _bMod.useMultiFileAuthState;
+    _Browsers = _bMod.Browsers;
+    _proto = _bMod.proto;
+    _generateWAMessageFromContent = _bMod.generateWAMessageFromContent;
+    _isJidGroup = _bMod.isJidGroup;
+  }
 }
 
 class BaileysService {
@@ -170,16 +185,15 @@ class BaileysService {
     logger.info({ sessionPath: SESSION_PATH }, 'Connecting to WhatsApp...');
 
     try {
-      const { state, saveCreds } = await useMultiFileAuthState(SESSION_PATH);
-      const { version } = await fetchLatestBaileysVersion();
+      await loadBaileys();
 
-      this.sock = makeWASocket({
-        version,
+      const { state, saveCreds } = await _useMultiFileAuthState(SESSION_PATH);
+
+      const sock = _makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: Browsers.windows('Chrome'),
+        browser: _Browsers.windows('Chrome'),
         syncFullHistory: false,
-        shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: false,
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
@@ -187,8 +201,20 @@ class BaileysService {
         retryRequestDelayMs: 250,
         generateHighQualityLinkPreview: false,
       });
+      this.sock = sock;
 
-      this.sock.ev.on('connection.update', async (update) => {
+      sock.ev.on('creds.update', saveCreds);
+
+      sock.ev.on('lid-mapping.update', (mapping: any) => {
+        if (mapping && sock.signalRepository?.lidMapping) {
+          const lidStore = (sock.signalRepository.lidMapping as any);
+          if (lidStore.storeLIDPNMapping && mapping.lid && mapping.pn) {
+            lidStore.storeLIDPNMapping(mapping.lid, mapping.pn);
+          }
+        }
+      });
+
+      sock.ev.on('connection.update', async (update: any) => {
         if (generation !== this.connectionGeneration) {
           logger.debug({ generation, current: this.connectionGeneration }, 'Ignoring stale event from old socket');
           return;
@@ -215,7 +241,7 @@ class BaileysService {
 
         if (connection === 'close') {
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-          const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+          const shouldReconnect = statusCode !== _DisconnectReason.loggedOut;
           const connectedDuration = Date.now() - this.lastConnectTime;
 
           if (connectedDuration < 30000 && this.lastConnectTime > 0) {
@@ -275,11 +301,9 @@ class BaileysService {
         }
       });
 
-      this.sock.ev.on('creds.update', saveCreds);
-
-      this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      sock.ev.on('messages.upsert', async ({ messages, type }: any) => {
         if (generation !== this.connectionGeneration) return;
-        if (type !== 'notify') return;
+        if (type !== 'notify' && type !== 'append') return;
 
         for (const msg of messages) {
           if (msg.key.fromMe) continue;
@@ -300,25 +324,15 @@ class BaileysService {
           logger.info({ remoteJid, messageText, msgType: Object.keys(msg.message || {}).join(',') }, 'RAW message');
           if (!messageText) continue;
 
-          let phone = remoteJid;
+          const resolvedJid = (msg.key as any).remoteJidAlt || remoteJid;
+          let phone = resolvedJid.replace('@s.whatsapp.net', '').replace('@lid', '');
           const whatsappJid = remoteJid;
-          if (remoteJid.endsWith('@lid')) {
-            const senderPn = (msg as any).senderPn || (msg as any).messageContextInfo?.senderPn;
-            if (senderPn) {
-              phone = senderPn.replace('@s.whatsapp.net', '');
-            } else if (msg.key.participant) {
-              phone = msg.key.participant.replace('@s.whatsapp.net', '');
-              if (phone.endsWith('@lid')) {
-                phone = phone.replace(':.*@lid|@lid', '');
-              }
-            }
-          }
 
           this.jidMap.set(phone, whatsappJid);
 
           const senderName = msg.pushName || '';
 
-          logger.info({ remoteJid, phone, whatsappJid, message: messageText, senderName, msgType: Object.keys(msg.message || {}).join(',') }, 'WhatsApp message received');
+          logger.info({ remoteJid, resolvedJid, phone, whatsappJid, message: messageText, senderName, msgType: Object.keys(msg.message || {}).join(',') }, 'WhatsApp message received');
           this.storeMessage(phone, messageText, 'in');
           const customer = customersModel.findByPhone(phone);
           const displayName = customer?.name || senderName;
@@ -412,22 +426,191 @@ class BaileysService {
   }
 
   async sendButtons(phone: string, contentText: string, buttons: Array<{ id: string; text: string }>): Promise<boolean> {
-    const lines = buttons.map(b => b.text);
-    const text = `${contentText}\n\n${lines.join('\n')}\n\n_Responda com sua escolha._`;
-    return this.sendMessage(phone, text);
+    for (let i = 0; i < 5; i++) {
+      if (this.sock && this.state === 'connected') break;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    if (!this.sock || this.state !== 'connected') {
+      const jid = this.jidMap.get(phone) || (phone.includes('@') ? phone : `${phone}@s.whatsapp.net`);
+      const text = `${contentText}\n\n${buttons.map(b => b.text).join('\n')}\n\n_Responda com sua escolha._`;
+      this.pendingMessages.push({ phone, message: text, jid, attempts: 1 });
+      return false;
+    }
+
+    const jid = this.jidMap.get(phone) || (phone.includes('@') ? phone : `${phone}@s.whatsapp.net`);
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        if (buttons.length <= 3) {
+          const nativeFlowMessage = _proto.Message.InteractiveMessage.NativeFlowMessage.create({
+            buttons: buttons.map((b) => ({
+              name: 'quick_reply',
+              buttonParamsJson: JSON.stringify({ display_text: b.text, id: b.id }),
+            })),
+          });
+          const interactiveMessage = _proto.Message.InteractiveMessage.create({
+            body: _proto.Message.InteractiveMessage.Body.create({ text: contentText }),
+            nativeFlowMessage,
+          });
+          const userJid = this.sock.user?.id || '';
+          const fullMsg = _generateWAMessageFromContent(jid, { interactiveMessage }, { userJid });
+          const additionalNodes: any[] = [
+            {
+              tag: 'biz',
+              attrs: {},
+              content: [{
+                tag: 'interactive',
+                attrs: { type: 'native_flow', v: '1' },
+                content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }],
+              }],
+            },
+          ];
+          if (!_isJidGroup(jid)) {
+            additionalNodes.push({ tag: 'bot', attrs: { biz_bot: '1' } });
+          }
+          await this.sock.relayMessage(jid, fullMsg.message!, { additionalNodes });
+        } else {
+          const listMessage = _proto.Message.ListMessage.create({
+            title: 'Opções',
+            description: contentText,
+            buttonText: 'Selecionar',
+            listType: _proto.Message.ListMessage.ListType.SINGLE_SELECT,
+            sections: [{
+              title: 'Opções',
+              rows: buttons.map((b) => ({
+                title: b.text,
+                description: '',
+                rowId: b.id,
+              })),
+            }],
+          });
+          const userJid = this.sock.user?.id || '';
+          const fullMsg = _generateWAMessageFromContent(jid, { listMessage }, { userJid });
+          const additionalNodes: any[] = [
+            {
+              tag: 'biz',
+              attrs: {},
+              content: [{
+                tag: 'list',
+                attrs: { v: '2', type: 'product_list' },
+              }],
+            },
+          ];
+          if (!_isJidGroup(jid)) {
+            additionalNodes.push({ tag: 'bot', attrs: { biz_bot: '1' } });
+          }
+          await this.sock.relayMessage(jid, fullMsg.message!, { additionalNodes });
+        }
+
+        this.storeMessage(phone, contentText, 'out');
+        emitWAMessage(phone, contentText, 'out');
+        return true;
+      } catch (err: any) {
+        logger.error({ error: err.message, phone, attempt, jid }, '[MSG] Failed to send interactive message');
+
+        if (attempt === 1) {
+          for (let i = 0; i < 3; i++) {
+            if (this.sock && this.state === 'connected') break;
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          if (!this.sock || this.state !== 'connected') {
+            const text = `${contentText}\n\n${buttons.map(b => b.text).join('\n')}\n\n_Responda com sua escolha._`;
+            this.pendingMessages.push({ phone, message: text, jid, attempts: 1 });
+            return false;
+          }
+        }
+      }
+    }
+
+    return false;
   }
 
   async sendList(phone: string, title: string, description: string, buttonText: string, sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>): Promise<boolean> {
-    const lines: string[] = [];
-    for (const section of sections) {
-      lines.push(`\n*${section.title}*`);
-      for (const row of section.rows) {
-        const desc = row.description ? ` - ${row.description}` : '';
-        lines.push(`• ${row.title}${desc}`);
+    for (let i = 0; i < 5; i++) {
+      if (this.sock && this.state === 'connected') break;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    if (!this.sock || this.state !== 'connected') {
+      const jid = this.jidMap.get(phone) || (phone.includes('@') ? phone : `${phone}@s.whatsapp.net`);
+      const lines: string[] = [];
+      for (const section of sections) {
+        lines.push(`\n*${section.title}*`);
+        for (const row of section.rows) {
+          const desc = row.description ? ` - ${row.description}` : '';
+          lines.push(`• ${row.title}${desc}`);
+        }
+      }
+      const text = `${description}\n${lines.join('\n')}\n\nDigite o nome da opção desejada.`;
+      this.pendingMessages.push({ phone, message: text, jid, attempts: 1 });
+      return false;
+    }
+
+    const jid = this.jidMap.get(phone) || (phone.includes('@') ? phone : `${phone}@s.whatsapp.net`);
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const listMessage = _proto.Message.ListMessage.create({
+          title,
+          description,
+          buttonText,
+          listType: _proto.Message.ListMessage.ListType.SINGLE_SELECT,
+          sections: sections.map(s => ({
+            title: s.title,
+            rows: s.rows.map(r => ({
+              title: r.title,
+              description: r.description || '',
+              rowId: r.id,
+            })),
+          })),
+        });
+        const userJid = this.sock.user?.id || '';
+        const fullMsg = _generateWAMessageFromContent(jid, { listMessage }, { userJid });
+        const additionalNodes: any[] = [
+          {
+            tag: 'biz',
+            attrs: {},
+            content: [{
+              tag: 'list',
+              attrs: { v: '2', type: 'product_list' },
+            }],
+          },
+        ];
+        if (!_isJidGroup(jid)) {
+          additionalNodes.push({ tag: 'bot', attrs: { biz_bot: '1' } });
+        }
+        await this.sock.relayMessage(jid, fullMsg.message!, { additionalNodes });
+
+        this.storeMessage(phone, description, 'out');
+        emitWAMessage(phone, description, 'out');
+        return true;
+      } catch (err: any) {
+        logger.error({ error: err.message, phone, attempt, jid }, '[MSG] Failed to send list message');
+
+        if (attempt === 1) {
+          for (let i = 0; i < 3; i++) {
+            if (this.sock && this.state === 'connected') break;
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          if (!this.sock || this.state !== 'connected') {
+            const lines: string[] = [];
+            for (const section of sections) {
+              lines.push(`\n*${section.title}*`);
+              for (const row of section.rows) {
+                const desc = row.description ? ` - ${row.description}` : '';
+                lines.push(`• ${row.title}${desc}`);
+              }
+            }
+            const text = `${description}\n${lines.join('\n')}\n\nDigite o nome da opção desejada.`;
+            this.pendingMessages.push({ phone, message: text, jid, attempts: 1 });
+            return false;
+          }
+        }
       }
     }
-    const text = `${description}\n${lines.join('\n')}\n\nDigite o nome da opção desejada.`;
-    return this.sendMessage(phone, text);
+
+    return false;
   }
 
   private extractMessageText(msg: proto.IWebMessageInfo): string | null {
@@ -439,6 +622,8 @@ class BaileysService {
     if (m.imageMessage?.caption) return m.imageMessage.caption;
     if (m.videoMessage?.caption) return m.videoMessage.caption;
     if (m.buttonsResponseMessage?.selectedButtonId) return m.buttonsResponseMessage.selectedButtonId;
+    if (m.templateButtonReplyMessage?.selectedId) return m.templateButtonReplyMessage.selectedId;
+    if (m.templateButtonReplyMessage?.selectedDisplayText) return m.templateButtonReplyMessage.selectedDisplayText;
     if (m.listResponseMessage?.singleSelectReply?.selectedRowId) return m.listResponseMessage.singleSelectReply.selectedRowId;
     if (m.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson) {
       try {

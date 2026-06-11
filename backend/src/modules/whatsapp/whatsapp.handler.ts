@@ -189,18 +189,12 @@ export class WhatsAppHandler {
 
 
     if (['ajuda', 'help'].includes(message)) {
-      return buttons(
-        'Como posso ajudar?',
-        { id: 'cardapio', text: '📋 Cardápio' },
-        { id: 'pedido', text: '🛒 Pedido' },
-        { id: 'acompanhar', text: '📦 Acompanhar' },
-        { id: 'atendente', text: '👤 Atendente' },
-      );
+      return messageFormatter.help();
     }
 
     // Handle cancel when there's no active order
     if (['cancelar', 'cancela', 'cancel'].includes(message)) {
-      return 'Você não tem um pedido ativo no momento. 🛒\n\nDigite o que deseja pedir!';
+      return 'Você não tem um pedido ativo no momento. 🛒';
     }
 
     // Interpret message using configured mode (AI or NLP)
@@ -259,7 +253,12 @@ export class WhatsAppHandler {
                 { role: 'assistant', content: response.message },
               ],
             });
-            return response.message;
+            return buttons(
+              response.message,
+              { id: 'sim', text: '✅ Confirmar' },
+              { id: 'adicionar', text: '➕ Adicionar mais' },
+              { id: 'nao', text: '❌ Cancelar' },
+            );
           }
 
           // Fallback: try direct product name matching
@@ -409,9 +408,18 @@ export class WhatsAppHandler {
         })),
         history: context.history,
       };
-      if (hasStockWarning) newContext.stockWarning = true;
+      if (hasStockWarning) {
+        newContext.stockWarning = true;
+        await whatsappSessionService.updateState(phone, 'awaiting_items', newContext);
+        return aiResponse.message;
+      }
       await whatsappSessionService.updateState(phone, 'awaiting_items', newContext);
-      return aiResponse.message;
+      return buttons(
+        aiResponse.message,
+        { id: 'sim', text: '✅ Confirmar' },
+        { id: 'adicionar', text: '➕ Adicionar mais' },
+        { id: 'nao', text: '❌ Cancelar' },
+      );
     }
 
     // Fallback: if AI/NLP returned no products, try direct product name matching
@@ -474,7 +482,7 @@ export class WhatsAppHandler {
       const minOrderError = this.checkMinimumOrder(context.items);
       if (minOrderError) return minOrderError;
       await whatsappSessionService.updateState(phone, 'awaiting_name', context);
-      return messageFormatter.askName();
+      return messageFormatter.askName() + '\n\nDigite seu nome.';
     }
 
     if (['não', 'nao', 'n'].includes(message)) {
@@ -527,6 +535,20 @@ export class WhatsAppHandler {
       // No variants needed anymore, go back to items
       await whatsappSessionService.updateState(phone, 'awaiting_items', context);
       return 'Pode continuar seu pedido. O que mais deseja?';
+    }
+
+    // Allow cancel/back
+    if (['cancelar', 'cancela', 'cancel', 'não', 'nao', 'n'].includes(message)) {
+      await whatsappSessionService.updateState(phone, 'awaiting_cancel', context);
+      return buttons(
+        'Deseja cancelar o pedido?',
+        { id: 'adicionar', text: '➕ Adicionar mais' },
+        { id: 'cancelar', text: '❌ Cancelar pedido' },
+      );
+    }
+    if (['voltar', 'volta', 'back', 'menu'].includes(message)) {
+      await whatsappSessionService.updateState(phone, 'awaiting_items', { items: context.items || [] });
+      return 'OK, voltando ao pedido. O que mais deseja?';
     }
 
     // Try to match the user's message to a variant
@@ -598,6 +620,30 @@ export class WhatsAppHandler {
     if (!pendingItem || !pendingItem.product) {
       await whatsappSessionService.updateState(phone, 'awaiting_items', {});
       return 'Não entendi. Pode repetir seu pedido?';
+    }
+
+    // Allow cancel/back
+    if (['cancelar', 'cancela', 'cancel', 'não', 'nao', 'n'].includes(message)) {
+      await whatsappSessionService.updateState(phone, 'awaiting_cancel', context);
+      return buttons(
+        'Deseja cancelar o pedido?',
+        { id: 'adicionar', text: '➕ Adicionar mais' },
+        { id: 'cancelar', text: '❌ Cancelar pedido' },
+      );
+    }
+    if (['voltar', 'volta', 'back', 'menu'].includes(message)) {
+      // Go back to variant selection
+      delete context.pendingModifierIndex;
+      await whatsappSessionService.updateState(phone, 'awaiting_variant' as SessionState, context);
+      const product = pendingItem.product;
+      const activeVariants = (product.variants || []).filter((v: any) => v.is_active);
+      return buttons(
+        `Para *${product.name}*, qual tamanho você quer?`,
+        ...activeVariants.map((v: any) => ({
+          id: v.name.toLowerCase(),
+          text: `${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`,
+        })),
+      );
     }
 
     const product = pendingItem.product;
@@ -717,7 +763,7 @@ export class WhatsAppHandler {
   private async handleAddressInput(phone: string, message: string, session: any): Promise<HandlerResponse> {
     // "novo_endereco" from the address confirmation buttons — ask for new address
     if (message === 'novo_endereco') {
-      return messageFormatter.askAddress();
+      return messageFormatter.askAddress() + '\n\nDigite seu endereço completo.';
     }
 
     if (['não', 'nao', 'cancelar'].includes(message)) {

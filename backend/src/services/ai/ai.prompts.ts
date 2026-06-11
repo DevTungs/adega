@@ -267,10 +267,17 @@ NUNCA:
   "intent": "novo_pedido|acompanhar_pedido|cancelar_pedido|promocao|reclamacao|ajuda|outro",
   "products": [
     {
-      "product_id": "uuid-do-produto",
-      "name": "Nome do Produto",
-      "quantity": 1,
+      "product_id": "uuid-do-produto-1",
+      "name": "Primeiro Produto",
+      "quantity": 2,
       "price": 10.90,
+      "valid": true
+    },
+    {
+      "product_id": "uuid-do-produto-2",
+      "name": "Segundo Produto",
+      "quantity": 1,
+      "price": 15.50,
       "valid": true
     }
   ],

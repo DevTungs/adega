@@ -650,36 +650,47 @@ class NLPService {
       }
     }
 
-    // If no alias matched, try direct product name matching
-    if (results.length === 0) {
-      // Try matching the full message (or message without quantity prefix) as a product name substring
-      const messageNorm = message.replace(/^\d+\s*x?\s*/, '').trim();
+    // 3. Direct product name matching on each unconsumed segment
+    // Always runs — splits on "e", "&", "," to support multiple products
+    const separatorPattern = /\s+(?:e|&|,)\s+/;
+    const segments = message.split(separatorPattern);
+
+    for (const segment of segments) {
+      const segTrimmed = segment.trim();
+      if (!segTrimmed || segTrimmed.length < 2) continue;
+
+      // Strip leading number: "2 red bull", "2x red bull"
+      let segName = segTrimmed.replace(/^\d+\s*x?\s*/, '').trim();
+      // Strip number words: "um", "dois", "tres" ...
+      const nwMatch = segName.match(/^(um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez)\s+/);
+      if (nwMatch) segName = segName.substring(nwMatch[0].length).trim();
+      if (!segName || segName.length < 2) continue;
+
+      // Check overlap with already consumed ranges
+      const segIdx = message.indexOf(segTrimmed);
+      const segEnd = segIdx + segTrimmed.length;
+      if (segIdx >= 0) {
+        const overlaps = consumedRanges.some(([start, end]) =>
+          (segIdx >= start && segIdx < end) || (segEnd > start && segEnd <= end)
+        );
+        if (overlaps) continue;
+      }
+
+      // Find matching product (that hasn't been matched yet)
       const directMatches = this.allProducts.filter((p: any) => {
+        if (matchedProductIds.has(p.id)) return false;
         const nameNorm = this.normalize(p.name);
-        return nameNorm.includes(messageNorm) || messageNorm.includes(nameNorm);
+        return nameNorm.includes(segName) || segName.includes(nameNorm);
       });
 
-      if (directMatches.length === 1) {
-        const before = message.replace(messageNorm, '').trim();
-        const quantity = this.extractQuantity(before);
-        results.push({
-          product: directMatches[0],
-          quantity,
-          alias: messageNorm,
-        });
-        matchedProductIds.add(directMatches[0].id);
-      } else if (directMatches.length > 1) {
-        // Multiple products match — ambiguous
-        // Pick the shortest name (most specific match)
+      if (directMatches.length >= 1) {
         directMatches.sort((a: any, b: any) => this.normalize(a.name).length - this.normalize(b.name).length);
         const best = directMatches[0];
-        const before = message.replace(messageNorm, '').trim();
+        const before = message.substring(0, segIdx >= 0 ? segIdx : 0).trim();
         const quantity = this.extractQuantity(before);
-        results.push({
-          product: best,
-          quantity,
-          alias: messageNorm,
-        });
+
+        if (segIdx >= 0) consumedRanges.push([segIdx, segEnd]);
+        results.push({ product: best, quantity, alias: segName });
         matchedProductIds.add(best.id);
       }
     }
