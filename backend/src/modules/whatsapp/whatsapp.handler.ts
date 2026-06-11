@@ -9,7 +9,7 @@ import { licenseService } from '../license/license.service';
 import { settingsAgent } from '../../services/settings/settings.service';
 import { orderValidator } from '../../services/order-validator/order-validator.service';
 import { AppError } from '../../shared/errors/app-error';
-import { emitAgentRequest } from '../../services/websocket/ws.server';
+import { emitAgentRequest, emitPixPending } from '../../services/websocket/ws.server';
 import { logger } from '../../shared/middlewares/logger';
 import { normalizePhone } from '../../shared/utils/phone';
 import { config } from '../../config/app.config';
@@ -17,13 +17,60 @@ import { config } from '../../config/app.config';
 const BOT_MODE = config.botMode;
 logger.info({ mode: BOT_MODE }, '[HANDLER] Bot mode configured');
 
-const PAYMENT_MAP: Record<string, string> = {
-  '1': 'cash', 'dinheiro': 'cash', 'cash': 'cash',
-  '2': 'credit_card', 'crédito': 'credit_card', 'credito': 'credit_card', 'cartão': 'credit_card', 'cartao': 'credit_card',
-  '3': 'debit_card', 'débito': 'debit_card', 'debito': 'debit_card',
-  '4': 'pix', 'pix': 'pix',
-  '5': 'voucher', 'vale': 'voucher', 'voucher': 'voucher',
+function buildPaymentMap(): Record<string, string> {
+  const map: Record<string, string> = {};
+  const methods = settingsAgent.getPaymentMethods();
+  for (const m of methods) {
+    map[m.icon] = m.id;
+    map[m.label.toLowerCase()] = m.id;
+    map[m.id] = m.id;
+    // Portuguese aliases
+    if (m.id === 'cash') { map['dinheiro'] = 'cash'; }
+    if (m.id === 'credit_card') { map['crédito'] = 'credit_card'; map['credito'] = 'credit_card'; map['cartão'] = 'credit_card'; map['cartao'] = 'credit_card'; }
+    if (m.id === 'debit_card') { map['débito'] = 'debit_card'; map['debito'] = 'debit_card'; }
+    if (m.id === 'pix') { map['pix'] = 'pix'; }
+    if (m.id === 'voucher') { map['vale'] = 'voucher'; map['voucher'] = 'voucher'; }
+  }
+  return map;
+}
+
+type HandlerResponse = string | {
+  _type: 'buttons';
+  text: string;
+  buttons: Array<{ id: string; text: string }>;
+} | {
+  _type: 'list';
+  title: string;
+  description: string;
+  buttonText: string;
+  sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>;
 };
+
+function buttons(text: string, ...btns: Array<{ id: string; text: string }>): HandlerResponse {
+  return { _type: 'buttons', text, buttons: btns };
+}
+
+function list(title: string, description: string, buttonText: string, sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>): HandlerResponse {
+  return { _type: 'list', title, description, buttonText, sections };
+}
+
+function paymentList(): HandlerResponse {
+  const methods = settingsAgent.getPaymentMethods();
+  if (methods.length === 0) {
+    return buttons(
+      'Qual a forma de pagamento? 💳',
+      { id: 'dinheiro', text: '💰 Dinheiro' },
+      { id: 'credito', text: '💳 Crédito' },
+      { id: 'debito', text: '💳 Débito' },
+      { id: 'pix', text: '📱 PIX' },
+      { id: 'vale', text: '🎫 Vale' },
+    );
+  }
+  return buttons(
+    'Qual a forma de pagamento? 💳',
+    ...methods.map(m => ({ id: m.id, text: `${m.icon} ${m.label}` })),
+  );
+}
 
 export class WhatsAppHandler {
   private isConfirmation(message: string): boolean {
@@ -42,7 +89,7 @@ export class WhatsAppHandler {
     }
     return false;
   }
-  async handleMessage(phone: string, message: string, senderName?: string, whatsappJid?: string): Promise<string> {
+  async handleMessage(phone: string, message: string, senderName?: string, whatsappJid?: string): Promise<HandlerResponse> {
     // Block all bot activity when license is invalid
     const licenseStatus = await licenseService.validateCurrent(false);
     if (!licenseStatus.canCreateOrders) {
@@ -75,6 +122,8 @@ export class WhatsAppHandler {
         return this.handlePaymentInput(normalizedPhone, normalized, session);
       case 'awaiting_notes':
         return this.handleNotesInput(normalizedPhone, normalized, session);
+      case 'awaiting_pix_confirmation':
+        return this.handlePixConfirmation(normalizedPhone, normalized, session);
       case 'awaiting_cancel':
         return this.handleAwaitingCancel(normalizedPhone, normalized, session);
       case 'order_placed':
@@ -85,18 +134,19 @@ export class WhatsAppHandler {
     }
   }
 
-  private async handleIdle(phone: string, message: string, session: any, senderName?: string): Promise<string> {
+  private async handleIdle(phone: string, message: string, session: any, senderName?: string): Promise<HandlerResponse> {
     const displayName = senderName || 'cliente';
 
     // Greetings
     const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'hello', 'hi', 'hey', 'eai', 'e ai', 'opa', 'fala'];
     if (greetings.some(g => message.startsWith(g))) {
-      return `Olá, ${displayName}! 👋\n\n` +
-             'Como posso ajudar?\n\n' +
-             '*1* - Ver cardápio\n' +
-             '*2* - Fazer pedido\n' +
-             '*3* - Acompanhar pedido\n' +
-             '*4* - Falar com atendente';
+      return buttons(
+        `Olá, ${displayName}! 👋\n\nComo posso ajudar?`,
+        { id: 'cardapio', text: '📋 Cardápio' },
+        { id: 'pedido', text: '🛒 Pedido' },
+        { id: 'acompanhar', text: '📦 Acompanhar' },
+        { id: 'atendente', text: '👤 Atendente' },
+      );
     }
 
     if (message === '1' || ['cardapio', 'cardápio', 'menu', 'produtos'].includes(message)) {
@@ -139,7 +189,13 @@ export class WhatsAppHandler {
 
 
     if (['ajuda', 'help'].includes(message)) {
-      return 'Como posso ajudar? Digite:\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente';
+      return buttons(
+        'Como posso ajudar?',
+        { id: 'cardapio', text: '📋 Cardápio' },
+        { id: 'pedido', text: '🛒 Pedido' },
+        { id: 'acompanhar', text: '📦 Acompanhar' },
+        { id: 'atendente', text: '👤 Atendente' },
+      );
     }
 
     // Handle cancel when there's no active order
@@ -176,7 +232,15 @@ export class WhatsAppHandler {
                 { role: 'user', content: message },
               ],
             });
-            return response.message;
+
+            const activeVariants = (fullProduct.variants || []).filter((v: any) => v.is_active);
+            return buttons(
+              `Para *${fullProduct.name}*, qual tamanho você quer?`,
+              ...activeVariants.map((v: any) => ({
+                id: v.name.toLowerCase(),
+                text: `${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`,
+              })),
+            );
           }
 
           // Response has products — save to session
@@ -208,7 +272,7 @@ export class WhatsAppHandler {
               total: directMatch.price * directMatch.quantity,
             }];
             const subtotal = displayItems[0].total;
-            const summary = `📋 *Pedido:*\n\n• ${directMatch.quantity}x ${directMatch.name} - R$ ${subtotal.toFixed(2)}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*\n\n✅ Confirmar?\n❌ Remover item\n➕ Adicionar mais`;
+            const summary = `📋 *Pedido:*\n\n• ${directMatch.quantity}x ${directMatch.name} - R$ ${subtotal.toFixed(2)}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*`;
 
             await whatsappSessionService.updateState(phone, 'awaiting_items', {
               items: [directMatch],
@@ -218,7 +282,11 @@ export class WhatsAppHandler {
                 { role: 'assistant', content: summary },
               ],
             });
-            return summary;
+            return buttons(
+              summary,
+              { id: 'sim', text: '✅ Confirmar' },
+              { id: 'adicionar', text: '➕ Adicionar mais' },
+            );
           }
 
           // No products but has message (disambiguation, category options, etc.)
@@ -247,11 +315,17 @@ export class WhatsAppHandler {
       }
     } catch (err: any) {
       logger.error({ error: err.message, mode: BOT_MODE }, 'Message interpretation error');
-      return `Desculpe, não entendi. Digite:\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente`;
+      return buttons(
+        'Desculpe, não entendi.',
+        { id: 'cardapio', text: '📋 Cardápio' },
+        { id: 'pedido', text: '🛒 Pedido' },
+        { id: 'acompanhar', text: '📦 Acompanhar' },
+        { id: 'atendente', text: '👤 Atendente' },
+      );
     }
   }
 
-  private async handleItemsInput(phone: string, message: string, session: any): Promise<string> {
+  private async handleItemsInput(phone: string, message: string, session: any): Promise<HandlerResponse> {
     const context = JSON.parse(session.context || '{}');
 
     // Check if adding more items
@@ -263,6 +337,9 @@ export class WhatsAppHandler {
     // Check if confirming (with fuzzy tolerance)
     // But NOT if there's a stock warning — "sim" means "show options", not "confirm"
     if (this.isConfirmation(message) && !context.stockWarning) {
+      // Validate minimum order before proceeding
+      const minOrderError = this.checkMinimumOrder(context.items);
+      if (minOrderError) return minOrderError;
       await whatsappSessionService.updateState(phone, 'awaiting_name', context);
       return messageFormatter.askName();
     }
@@ -278,7 +355,11 @@ export class WhatsAppHandler {
     // Check if wants to cancel — ask first
     if (['não', 'nao', 'n', 'cancelar', 'cancela', 'cancel'].includes(message)) {
       await whatsappSessionService.updateState(phone, 'awaiting_cancel', context);
-      return 'Deseja adicionar mais itens ou cancelar o pedido?\n\n*Adicionar* - voltar ao pedido\n*Cancelar* - cancelar tudo';
+      return buttons(
+        'Deseja adicionar mais itens ou cancelar o pedido?',
+        { id: 'adicionar', text: '➕ Adicionar mais' },
+        { id: 'cancelar', text: '❌ Cancelar pedido' },
+      );
     }
 
     // Interpret message using configured mode
@@ -305,7 +386,15 @@ export class WhatsAppHandler {
         items: context.items || [],
         history: context.history,
       });
-      return aiResponse.message;
+
+      const activeVariants = (fullProduct.variants || []).filter((v: any) => v.is_active);
+      return buttons(
+        `Para *${fullProduct.name}*, qual tamanho você quer?`,
+        ...activeVariants.map((v: any) => ({
+          id: v.name.toLowerCase(),
+          text: `${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`,
+        })),
+      );
     }
 
     // NLP/AI returned products — update session
@@ -326,7 +415,10 @@ export class WhatsAppHandler {
     }
 
     // Fallback: if AI/NLP returned no products, try direct product name matching
-    if (aiResponse.products.length === 0) {
+    // BUT skip if the message is a removal intent (NLP already handled it)
+    const removalWords = ['remover', 'remove', 'tirar', 'tira', 'retirar', 'retira', 'excluir', 'deletar'];
+    const isRemovalMsg = removalWords.some(w => message.startsWith(w) || message.includes(`tira `) || message.includes(`remove `));
+    if (!isRemovalMsg && aiResponse.products.length === 0) {
       const directMatch = await this.matchProductDirectly(message);
       if (directMatch) {
         const existingItems = context.items || [];
@@ -339,18 +431,21 @@ export class WhatsAppHandler {
         }));
         const subtotal = displayItems.reduce((sum: number, i: any) => sum + i.total, 0);
 
-        const lines: string[] = ['📋 *Pedido:*\n'];
+        const summary = [`📋 *Pedido:*\n`];
         for (const item of displayItems) {
-          lines.push(`• ${item.quantity}x ${item.name} - R$ ${item.total.toFixed(2)}`);
+          summary.push(`• ${item.quantity}x ${item.name} - R$ ${item.total.toFixed(2)}`);
         }
-        lines.push(`\n💰 *Total: R$ ${subtotal.toFixed(2)}*`);
-        lines.push('\n✅ Confirmar?\n❌ Remover item\n➕ Adicionar mais');
+        summary.push(`\n💰 *Total: R$ ${subtotal.toFixed(2)}*`);
 
         await whatsappSessionService.updateState(phone, 'awaiting_items', {
           items: merged,
           history: context.history,
         });
-        return lines.join('\n');
+        return buttons(
+          summary.join('\n'),
+          { id: 'sim', text: '✅ Confirmar' },
+          { id: 'adicionar', text: '➕ Adicionar mais' },
+        );
       }
     }
 
@@ -364,12 +459,20 @@ export class WhatsAppHandler {
       return aiResponse.message;
     }
 
-    return 'O que deseja fazer com o pedido?\n\n*Sim* - Confirmar\n*Não* - Cancelar\n*Adicionar* - mais itens\n*Remover [item]* - tirar item';
+    return buttons(
+      'O que deseja fazer com o pedido?',
+      { id: 'sim', text: '✅ Confirmar' },
+      { id: 'adicionar', text: '➕ Adicionar mais' },
+      { id: 'nao', text: '❌ Cancelar' },
+    );
   }
 
-  private async handleConfirmation(phone: string, message: string, session: any): Promise<string> {
+  private async handleConfirmation(phone: string, message: string, session: any): Promise<HandlerResponse> {
     if (this.isConfirmation(message)) {
       const context = JSON.parse(session.context || '{}');
+      // Validate minimum order before proceeding
+      const minOrderError = this.checkMinimumOrder(context.items);
+      if (minOrderError) return minOrderError;
       await whatsappSessionService.updateState(phone, 'awaiting_name', context);
       return messageFormatter.askName();
     }
@@ -377,13 +480,21 @@ export class WhatsAppHandler {
     if (['não', 'nao', 'n'].includes(message)) {
       const context = JSON.parse(session.context || '{}');
       await whatsappSessionService.updateState(phone, 'awaiting_cancel', context);
-      return 'Deseja adicionar mais itens ou cancelar o pedido?\n\n*Adicionar* - voltar ao pedido\n*Cancelar* - cancelar tudo';
+      return buttons(
+        'Deseja adicionar mais itens ou cancelar o pedido?',
+        { id: 'adicionar', text: '➕ Adicionar mais' },
+        { id: 'cancelar', text: '❌ Cancelar pedido' },
+      );
     }
 
-    return 'Confirma o pedido?\n\n*Sim* - Confirmar\n*Não* - Cancelar';
+    return buttons(
+      'Confirma o pedido?',
+      { id: 'sim', text: '✅ Confirmar' },
+      { id: 'nao', text: '❌ Cancelar' },
+    );
   }
 
-  private async handleAwaitingCancel(phone: string, message: string, session: any): Promise<string> {
+  private async handleAwaitingCancel(phone: string, message: string, session: any): Promise<HandlerResponse> {
     const context = JSON.parse(session.context || '{}');
 
     if (['adicionar', 'add', 'mais', 'voltar', 'continuar'].includes(message)) {
@@ -396,10 +507,14 @@ export class WhatsAppHandler {
       return messageFormatter.cancelConfirmation();
     }
 
-    return 'O que deseja fazer?\n\n*Adicionar* - adicionar mais itens\n*Cancelar* - cancelar o pedido';
+    return buttons(
+      'O que deseja fazer?',
+      { id: 'adicionar', text: '➕ Adicionar mais' },
+      { id: 'cancelar', text: '❌ Cancelar pedido' },
+    );
   }
 
-  private async handleVariantInput(phone: string, message: string, session: any): Promise<string> {
+  private async handleVariantInput(phone: string, message: string, session: any): Promise<HandlerResponse> {
     const context = JSON.parse(session.context || '{}');
     const pendingItem = context.pendingItem;
     if (!pendingItem) {
@@ -422,11 +537,14 @@ export class WhatsAppHandler {
     });
 
     if (!matchedVariant) {
-      const options = product.variants
-        .filter((v: any) => v.is_active)
-        .map((v: any) => `• ${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`)
-        .join('\n');
-      return `Não entendi o tamanho. Para *${product.name}*, temos:\n${options}\n\nQual você quer?`;
+      const activeVariants = product.variants.filter((v: any) => v.is_active);
+      return buttons(
+        `Para *${product.name}*, qual tamanho você quer?`,
+        ...activeVariants.map((v: any) => ({
+          id: v.name.toLowerCase(),
+          text: `${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`,
+        })),
+      );
     }
 
     // Check if the product also has modifiers
@@ -445,11 +563,14 @@ export class WhatsAppHandler {
       await whatsappSessionService.updateState(phone, 'awaiting_modifier' as SessionState, context);
 
       const firstMod = requiredMods[0];
-      const opts = (firstMod.options || [])
-        .filter((o: any) => o.is_active)
-        .map((o: any, i: number) => `*${i + 1}* - ${o.name}${o.price_add > 0 ? ` (+R$ ${o.price_add.toFixed(2)})` : ''}`)
-        .join('\n');
-      return `Escolha *${firstMod.name}*:\n${opts}`;
+      const activeOpts = (firstMod.options || []).filter((o: any) => o.is_active);
+      return buttons(
+        `Escolha *${firstMod.name}*:`,
+        ...activeOpts.map((o: any) => ({
+          id: o.name.toLowerCase(),
+          text: `${o.name}${o.price_add > 0 ? ` (+R$${o.price_add.toFixed(2)})` : ''}`,
+        })),
+      );
     }
 
     // No modifiers needed — add item to cart
@@ -462,10 +583,14 @@ export class WhatsAppHandler {
     const displayItems = items.map((i: any) => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
     const subtotal = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
 
-    return `📋 *Pedido:*\n${displayItems}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*\n\n✅ Confirmar?\n➕ Adicionar mais`;
+    return buttons(
+      `📋 *Pedido:*\n${displayItems}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*`,
+      { id: 'sim', text: '✅ Confirmar' },
+      { id: 'adicionar', text: '➕ Adicionar mais' },
+    );
   }
 
-  private async handleModifierInput(phone: string, message: string, session: any): Promise<string> {
+  private async handleModifierInput(phone: string, message: string, session: any): Promise<HandlerResponse> {
     const context = JSON.parse(session.context || '{}');
     const pendingItem = context.pendingItem;
     const modIndex = context.pendingModifierIndex ?? 0;
@@ -489,7 +614,11 @@ export class WhatsAppHandler {
 
       const displayItems = items.map((i: any) => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
       const subtotal = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
-      return `📋 *Pedido:*\n${displayItems}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*\n\n✅ Confirmar?\n➕ Adicionar mais`;
+      return buttons(
+        `📋 *Pedido:*\n${displayItems}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*`,
+        { id: 'sim', text: '✅ Confirmar' },
+        { id: 'adicionar', text: '➕ Adicionar mais' },
+      );
     }
 
     const currentMod = requiredMods[modIndex];
@@ -503,10 +632,13 @@ export class WhatsAppHandler {
     });
 
     if (!matchedOption) {
-      const optsList = opts
-        .map((o: any, i: number) => `*${i + 1}* - ${o.name}${o.price_add > 0 ? ` (+R$ ${o.price_add.toFixed(2)})` : ''}`)
-        .join('\n');
-      return `Opção inválida. Escolha *${currentMod.name}*:\n${optsList}`;
+      return buttons(
+        `Opção inválida. Escolha *${currentMod.name}*:`,
+        ...opts.map((o: any) => ({
+          id: o.name.toLowerCase(),
+          text: `${o.name}${o.price_add > 0 ? ` (+R$${o.price_add.toFixed(2)})` : ''}`,
+        })),
+      );
     }
 
     // Record the selected modifier
@@ -526,11 +658,14 @@ export class WhatsAppHandler {
 
     if (context.pendingModifierIndex < requiredMods.length) {
       const nextMod = requiredMods[context.pendingModifierIndex];
-      const nextOpts = (nextMod.options || [])
-        .filter((o: any) => o.is_active)
-        .map((o: any, i: number) => `*${i + 1}* - ${o.name}${o.price_add > 0 ? ` (+R$ ${o.price_add.toFixed(2)})` : ''}`)
-        .join('\n');
-      return `Agora escolha *${nextMod.name}*:\n${nextOpts}`;
+      const activeOpts = (nextMod.options || []).filter((o: any) => o.is_active);
+      return buttons(
+        `Agora escolha *${nextMod.name}*:`,
+        ...activeOpts.map((o: any) => ({
+          id: o.name.toLowerCase(),
+          text: `${o.name}${o.price_add > 0 ? ` (+R$${o.price_add.toFixed(2)})` : ''}`,
+        })),
+      );
     }
 
     // All done — add to cart
@@ -543,10 +678,14 @@ export class WhatsAppHandler {
 
     const displayItems = items.map((i: any) => `• ${i.quantity}x ${i.name} - R$ ${(i.price * i.quantity).toFixed(2)}`).join('\n');
     const subtotal = items.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
-    return `📋 *Pedido:*\n${displayItems}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*\n\n✅ Confirmar?\n➕ Adicionar mais`;
+    return buttons(
+      `📋 *Pedido:*\n${displayItems}\n\n💰 *Total: R$ ${subtotal.toFixed(2)}*`,
+      { id: 'sim', text: '✅ Confirmar' },
+      { id: 'adicionar', text: '➕ Adicionar mais' },
+    );
   }
 
-  private async handleNameInput(phone: string, message: string, session: any, whatsappJid?: string): Promise<string> {
+  private async handleNameInput(phone: string, message: string, session: any, whatsappJid?: string): Promise<HandlerResponse> {
     if (['não', 'nao', 'cancelar'].includes(message)) {
       await whatsappSessionService.resetSession(phone);
       return messageFormatter.cancelConfirmation();
@@ -566,12 +705,21 @@ export class WhatsAppHandler {
     const addresses = JSON.parse(customer.addresses || '[]');
     if (addresses.length > 0) {
       const lastAddress = addresses[addresses.length - 1];
-      return `📍 *Endereço de Entrega*\n\nÚltimo endereço: ${lastAddress}\n\nDeseja usar este endereço? (sim/não)\nOu digite um novo endereço.`;
+      return buttons(
+        `📍 *Endereço de Entrega*\n\nÚltimo endereço: ${lastAddress}`,
+        { id: 'sim', text: '✅ Sim, esse mesmo' },
+        { id: 'novo_endereco', text: '✏️ Digitar novo endereço' },
+      );
     }
     return messageFormatter.askAddress();
   }
 
-  private async handleAddressInput(phone: string, message: string, session: any): Promise<string> {
+  private async handleAddressInput(phone: string, message: string, session: any): Promise<HandlerResponse> {
+    // "novo_endereco" from the address confirmation buttons — ask for new address
+    if (message === 'novo_endereco') {
+      return messageFormatter.askAddress();
+    }
+
     if (['não', 'nao', 'cancelar'].includes(message)) {
       await whatsappSessionService.resetSession(phone);
       return messageFormatter.cancelConfirmation();
@@ -586,7 +734,7 @@ export class WhatsAppHandler {
           const context = JSON.parse(session.context || '{}');
           context.address = addresses[addresses.length - 1];
           await whatsappSessionService.updateState(phone, 'awaiting_payment', context);
-          return messageFormatter.askPayment();
+          return paymentList();
         }
       }
       return messageFormatter.askAddress();
@@ -596,25 +744,62 @@ export class WhatsAppHandler {
     context.address = message;
 
     await whatsappSessionService.updateState(phone, 'awaiting_payment', context);
-    return messageFormatter.askPayment();
+    return paymentList();
   }
 
-  private async handlePaymentInput(phone: string, message: string, session: any): Promise<string> {
+  private async handlePaymentInput(phone: string, message: string, session: any): Promise<HandlerResponse> {
     if (['não', 'nao', 'cancelar'].includes(message)) {
       await whatsappSessionService.resetSession(phone);
       return messageFormatter.cancelConfirmation();
     }
 
+    const PAYMENT_MAP = buildPaymentMap();
     const paymentMethod = PAYMENT_MAP[message] || PAYMENT_MAP[message.toLowerCase()];
     if (!paymentMethod) {
-      return messageFormatter.askPayment();
+      return paymentList();
     }
 
     const context = JSON.parse(session.context || '{}');
     context.paymentMethod = paymentMethod;
 
+    // PIX flow: show PIX key and wait for confirmation
+    if (paymentMethod === 'pix') {
+      const pixKey = settingsAgent.getPixKey();
+      if (pixKey) {
+        await whatsappSessionService.updateState(phone, 'awaiting_pix_confirmation' as SessionState, context);
+        return buttons(
+          messageFormatter.askPixProof(pixKey, context.items),
+          { id: 'cancelar', text: '❌ Cancelar pedido' },
+        );
+      }
+      // No PIX key configured — fall through to normal flow
+    }
+
     await whatsappSessionService.updateState(phone, 'awaiting_notes', context);
-    return messageFormatter.askNotes();
+    return buttons(
+      messageFormatter.askNotes(),
+      { id: 'nao', text: '🚫 Sem observações' },
+    );
+  }
+
+  private async handlePixConfirmation(phone: string, message: string, session: any): Promise<HandlerResponse> {
+    const context = JSON.parse(session.context || '{}');
+
+    if (['cancelar', 'cancela', 'cancel', 'não', 'nao'].includes(message)) {
+      await whatsappSessionService.resetSession(phone);
+      return messageFormatter.cancelConfirmation();
+    }
+
+    // Customer sent proof (any message counts). Notify admin.
+    const total = (context.items || []).reduce((s: number, i: any) => s + (i.price || 0) * (i.quantity || 0), 0);
+    const pixKey = settingsAgent.getPixKey();
+
+    emitPixPending(phone, context.customerName || 'Cliente', total);
+
+    return buttons(
+      messageFormatter.pixPending(pixKey, total),
+      { id: 'cancelar', text: '❌ Cancelar pedido' },
+    );
   }
 
   private async saveHistory(phone: string, session: any, userMsg: string, assistantMsg: string): Promise<void> {
@@ -631,7 +816,7 @@ export class WhatsAppHandler {
     }
   }
 
-  private async handleOrderPlaced(phone: string, message: string, session: any): Promise<string> {
+  private async handleOrderPlaced(phone: string, message: string, session: any): Promise<HandlerResponse> {
     const context = JSON.parse(session.context || '{}');
 
     // Greetings → go to idle but keep lastOrder for status checking
@@ -642,7 +827,13 @@ export class WhatsAppHandler {
         lastOrderNumber: context.lastOrderNumber,
       });
       const name = context.customerName || 'cliente';
-      return `Olá, ${name}! 👋\n\nComo posso ajudar?\n\n*1* - Ver cardápio\n*2* - Fazer pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente`;
+      return buttons(
+        `Olá, ${name}! 👋\n\nComo posso ajudar?`,
+        { id: 'cardapio', text: '📋 Cardápio' },
+        { id: 'novo pedido', text: '🛒 Novo pedido' },
+        { id: 'acompanhar', text: '📦 Acompanhar' },
+        { id: 'atendente', text: '👤 Atendente' },
+      );
     }
 
     if (['novo pedido', 'novo', 'pedir', 'quero pedir', 'menu', 'cardapio', 'cardápio', '1', '2'].includes(message)) {
@@ -666,7 +857,13 @@ export class WhatsAppHandler {
 
     // Default: show order options
     const orderNum = context.lastOrderNumber || '';
-    return `✅ Pedido #${orderNum} confirmado!\n\n*1* - Ver cardápio\n*2* - Novo pedido\n*3* - Acompanhar pedido\n*4* - Falar com atendente`;
+    return buttons(
+      `✅ Pedido #${orderNum} confirmado!`,
+      { id: 'cardapio', text: '📋 Cardápio' },
+      { id: 'novo pedido', text: '🛒 Novo pedido' },
+      { id: 'acompanhar', text: '📦 Acompanhar' },
+      { id: 'atendente', text: '👤 Atendente' },
+    );
   }
 
   private async matchProductDirectly(message: string): Promise<{ product_id: string; name: string; quantity: number; price: number } | null> {
@@ -731,6 +928,15 @@ export class WhatsAppHandler {
       }
     }
     return Array.from(map.values());
+  }
+
+  private checkMinimumOrder(items: any[]): string | null {
+    const subtotal = (items || []).reduce((sum: number, i: any) => sum + (i.price || 0) * (i.quantity || 0), 0);
+    const minOrder = settingsAgent.getMinOrder();
+    if (minOrder > 0 && subtotal > 0 && subtotal < minOrder) {
+      return `⚠️ Pedido mínimo: R$ ${minOrder.toFixed(2)}. Seu pedido está R$ ${subtotal.toFixed(2)} (falta R$ ${(minOrder - subtotal).toFixed(2)}).\n\nAdicione mais itens para continuar.`;
+    }
+    return null;
   }
 
   private async handleNotesInput(phone: string, message: string, session: any): Promise<string> {

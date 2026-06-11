@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Store, Printer, Bell, RefreshCw } from 'lucide-react';
+import { Save, Store, Printer, Bell, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../api/client';
 
@@ -20,6 +20,23 @@ interface Settings {
   notify_sound: string;
   notify_orders: string;
   notify_whatsapp: string;
+  pix_key: string;
+  payment_methods: string;
+  delivery_fee_ranges: string;
+}
+
+interface PaymentMethod {
+  id: string;
+  label: string;
+  icon: string;
+  enabled: boolean;
+  order: number;
+}
+
+interface DeliveryFeeRange {
+  from: string;
+  to: string;
+  fee: number;
 }
 
 const defaultSettings: Settings = {
@@ -39,6 +56,18 @@ const defaultSettings: Settings = {
   notify_sound: 'true',
   notify_orders: 'true',
   notify_whatsapp: 'false',
+  pix_key: '',
+  payment_methods: JSON.stringify([
+    { id: 'cash', label: 'Dinheiro', icon: '1', enabled: true, order: 1 },
+    { id: 'credit_card', label: 'Cartão de Crédito', icon: '2', enabled: true, order: 2 },
+    { id: 'debit_card', label: 'Cartão de Débito', icon: '3', enabled: true, order: 3 },
+    { id: 'pix', label: 'PIX', icon: '4', enabled: true, order: 4 },
+    { id: 'voucher', label: 'Vale', icon: '5', enabled: true, order: 5 },
+  ]),
+  delivery_fee_ranges: JSON.stringify([
+    { from: '00:00', to: '12:00', fee: 5.00 },
+    { from: '12:00', to: '23:59', fee: 8.00 },
+  ]),
 };
 
 export default function Settings() {
@@ -74,7 +103,6 @@ export default function Settings() {
         setPrinters(data.data.printers || []);
       }
     } catch {
-      // Silently fail - not critical
     } finally {
       setLoadingPrinters(false);
     }
@@ -94,6 +122,49 @@ export default function Settings() {
 
   const update = (key: keyof Settings, value: string) => {
     setSettings({ ...settings, [key]: value });
+  };
+
+  const getPaymentMethods = (): PaymentMethod[] => {
+    try { return JSON.parse(settings.payment_methods); } catch { return []; }
+  };
+
+  const updatePaymentMethods = (methods: PaymentMethod[]) => {
+    update('payment_methods', JSON.stringify(methods));
+  };
+
+  const togglePaymentMethod = (id: string) => {
+    const methods = getPaymentMethods();
+    const idx = methods.findIndex(m => m.id === id);
+    if (idx >= 0) {
+      methods[idx].enabled = !methods[idx].enabled;
+      updatePaymentMethods(methods);
+    }
+  };
+
+  const getFeeRanges = (): DeliveryFeeRange[] => {
+    try { return JSON.parse(settings.delivery_fee_ranges); } catch { return []; }
+  };
+
+  const updateFeeRanges = (ranges: DeliveryFeeRange[]) => {
+    update('delivery_fee_ranges', JSON.stringify(ranges));
+  };
+
+  const addFeeRange = () => {
+    const ranges = getFeeRanges();
+    ranges.push({ from: '00:00', to: '23:59', fee: 5 });
+    updateFeeRanges(ranges);
+  };
+
+  const removeFeeRange = (idx: number) => {
+    const ranges = getFeeRanges();
+    ranges.splice(idx, 1);
+    updateFeeRanges(ranges);
+  };
+
+  const updateFeeRange = (idx: number, field: keyof DeliveryFeeRange, value: string | number) => {
+    const ranges = getFeeRanges();
+    (ranges[idx] as any)[field] = value;
+    updateFeeRanges(ranges);
   };
 
   if (loading) {
@@ -143,8 +214,31 @@ export default function Settings() {
           </div>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Taxa de Entrega (R$)</label>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Taxa de Entrega Fixa (R$)</label>
               <input type="number" step="0.01" value={settings.delivery_fee} onChange={(e) => update('delivery_fee', e.target.value)} className="input w-full" />
+              <p className="text-xs text-gray-400 mt-1">Usado quando nenhuma faixa horária abaixo está configurada</p>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-300">Faixas de Horário</label>
+                <button type="button" onClick={addFeeRange} className="text-xs text-primary-600 hover:text-primary-800 flex items-center gap-1">
+                  <Plus size={12} /> Adicionar faixa
+                </button>
+              </div>
+              <div className="space-y-2">
+                {getFeeRanges().map((range, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input type="time" value={range.from} onChange={(e) => updateFeeRange(i, 'from', e.target.value)} className="input flex-1 text-sm" />
+                    <span className="text-gray-400">ate</span>
+                    <input type="time" value={range.to} onChange={(e) => updateFeeRange(i, 'to', e.target.value)} className="input flex-1 text-sm" />
+                    <input type="number" step="0.01" value={range.fee} onChange={(e) => updateFeeRange(i, 'fee', parseFloat(e.target.value) || 0)} className="input w-20 text-sm" placeholder="R$" />
+                    <button type="button" onClick={() => removeFeeRange(i)} className="text-red-400 hover:text-red-300"><Trash2 size={16} /></button>
+                  </div>
+                ))}
+                {getFeeRanges().length === 0 && (
+                  <p className="text-xs text-gray-500">Nenhuma faixa. Adicione uma faixa de horário.</p>
+                )}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">Pedido Mínimo (R$)</label>
@@ -155,6 +249,41 @@ export default function Settings() {
               <input type="number" value={settings.delivery_radius} onChange={(e) => update('delivery_radius', e.target.value)} className="input w-full" />
             </div>
           </div>
+        </div>
+
+        {/* PIX Settings */}
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-2xl">💳</span>
+            <h2 className="text-lg font-semibold">PIX</h2>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Chave PIX</label>
+              <input type="text" value={settings.pix_key} onChange={(e) => update('pix_key', e.target.value)} className="input w-full" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória" />
+              <p className="text-xs text-gray-400 mt-1">O bot mostrará esta chave quando o cliente escolher PIX</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Methods Settings */}
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-2xl">🪙</span>
+            <h2 className="text-lg font-semibold">Métodos de Pagamento</h2>
+          </div>
+          <div className="space-y-2">
+            {getPaymentMethods().map((method) => (
+              <label key={method.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-700/50 hover:bg-gray-700 cursor-pointer">
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" checked={method.enabled} onChange={() => togglePaymentMethod(method.id)} className="rounded" />
+                  <span className="text-sm text-gray-200">{method.label}</span>
+                </div>
+                <span className="text-xs text-gray-500">{method.icon}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-2">Marque/desmarque os métodos que estarão disponíveis no WhatsApp</p>
         </div>
 
         {/* Printer Settings */}

@@ -87,12 +87,47 @@ export class MessageFormatter {
   }
 
   askPayment(): string {
-    return 'Qual a forma de pagamento? 💳\n\n' +
-           '1️⃣ Dinheiro\n' +
-           '2️⃣ Cartão de Crédito\n' +
-           '3️⃣ Cartão de Débito\n' +
-           '4️⃣ PIX\n' +
-           '5️⃣ Vale';
+    const methods = settingsAgent.getPaymentMethods();
+    if (methods.length === 0) {
+      return 'Qual a forma de pagamento? 💳\n\n' +
+             '1️⃣ Dinheiro\n' +
+             '2️⃣ Cartão de Crédito\n' +
+             '3️⃣ Cartão de Débito\n' +
+             '4️⃣ PIX\n' +
+             '5️⃣ Vale';
+    }
+    const lines = methods.map(m => `${m.icon}️⃣ ${m.label}`);
+    return 'Qual a forma de pagamento? 💳\n\n' + lines.join('\n');
+  }
+
+  askPixProof(pixKey: string, items: any[]): string {
+    const subtotal = (items || []).reduce((s: number, i: any) => s + (i.price || 0) * (i.quantity || 0), 0);
+    const deliveryFee = settingsAgent.getDeliveryFee();
+    const total = subtotal + deliveryFee;
+
+    return `💳 *PIX*\n\n` +
+           `Chave PIX:\n` +
+           `\`\`\`${pixKey}\`\`\`\n\n` +
+           `💰 *Total: R$ ${total.toFixed(2)}*\n\n` +
+           `📸 Após fazer o pagamento, envie o *comprovante* aqui (foto ou print).\n\n` +
+           `Digite *cancelar* para cancelar o pedido.`;
+  }
+
+  pixPending(pixKey: string, total: number): string {
+    return `⏳ *Aguardando confirmação do pagamento...*\n\n` +
+           `Chave PIX: ${pixKey}\n` +
+           `💰 *Valor: R$ ${total.toFixed(2)}*\n\n` +
+           `Seu pedido será confirmado assim que o pagamento for verificado. ✅\n` +
+           `Acompanhe pelo menu "Meu Pedido" 📦\n\n` +
+           `Digite *cancelar* se deseja cancelar.`;
+  }
+
+  pixConfirmed(orderNumber: number): string {
+    return `✅ *PIX confirmado! Pedido #${orderNumber} registrado!*\n\nAcompanhe pelo menu "Meu Pedido" 📦`;
+  }
+
+  pixRejected(): string {
+    return `❌ *Pagamento PIX não confirmado.*\n\nSeu pedido foi cancelado. Se precisar, faça um novo pedido. 😔`;
   }
 
   askNotes(): string {

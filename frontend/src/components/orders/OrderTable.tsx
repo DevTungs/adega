@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { Order, OrderStatus } from '../../types';
 import OrderStatusBadge from './OrderStatusBadge';
 import { formatCurrency, formatDateTime, PAYMENT_LABELS } from '../../utils/format';
 import { ordersApi } from '../../api/orders';
 import toast from 'react-hot-toast';
-import { Eye, ChevronRight } from 'lucide-react';
+import { Eye, ChevronRight, X } from 'lucide-react';
 
 interface Props {
   orders: Order[];
@@ -30,6 +31,9 @@ const NEXT_STATUS_LABEL: Partial<Record<OrderStatus, string>> = {
 
 export default function OrderTable({ orders, orderType, onStatusChange, onViewDetails }: Props) {
   const isPDV = orderType === 'pdv';
+  const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+
   const handleAdvance = async (order: Order) => {
     const next = NEXT_STATUS[order.status];
     if (!next) return;
@@ -42,12 +46,14 @@ export default function OrderTable({ orders, orderType, onStatusChange, onViewDe
     }
   };
 
-  const handleCancel = async (order: Order) => {
-    if (!confirm(`Cancelar pedido #${order.order_number}?`)) return;
+  const handleCancelConfirm = async () => {
+    if (!cancelOrder) return;
     try {
-      await ordersApi.cancel(order.id, 'Cancelado pelo admin');
-      onStatusChange(order.id, 'cancelled');
-      toast.success(`Pedido #${order.order_number} cancelado`);
+      await ordersApi.cancel(cancelOrder.id, cancelReason || 'Cancelado pelo admin');
+      onStatusChange(cancelOrder.id, 'cancelled');
+      toast.success(`Pedido #${cancelOrder.order_number} cancelado`);
+      setCancelOrder(null);
+      setCancelReason('');
     } catch {
       toast.error('Erro ao cancelar pedido');
     }
@@ -117,7 +123,7 @@ export default function OrderTable({ orders, orderType, onStatusChange, onViewDe
                   )}
                   {!isPDV && order.status !== 'delivered' && order.status !== 'cancelled' && (
                     <button
-                      onClick={() => handleCancel(order)}
+                      onClick={() => { setCancelOrder(order); setCancelReason(''); }}
                       className="px-3 py-1 text-red-600 hover:bg-red-50 rounded-lg text-sm"
                     >
                       Cancelar
@@ -129,6 +135,44 @@ export default function OrderTable({ orders, orderType, onStatusChange, onViewDe
           ))}
         </tbody>
       </table>
+
+      {/* Cancel Modal */}
+      {cancelOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-900 rounded-xl border border-gray-800 w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-white">
+                Cancelar Pedido #{cancelOrder.order_number}
+              </h3>
+              <button onClick={() => setCancelOrder(null)} className="p-1 hover:bg-gray-800 rounded text-gray-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-400 mb-3">Motivo do cancelamento:</p>
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Digite o motivo..."
+              rows={3}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setCancelOrder(null)}
+                className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                Voltar
+              </button>
+              <button
+                onClick={handleCancelConfirm}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium transition-colors"
+              >
+                Confirmar Cancelamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

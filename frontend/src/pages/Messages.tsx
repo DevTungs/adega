@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
-import { MessageCircle, Send, ArrowLeft, Search } from 'lucide-react';
+import { MessageCircle, Send, ArrowLeft, Search, Edit2, Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { whatsappApi } from '../api/whatsapp';
+import { customersApi } from '../api/customers';
 
 interface WAMessage {
   phone: string;
@@ -13,6 +14,7 @@ interface WAMessage {
 
 interface Conversation {
   phone: string;
+  name: string | null;
   lastMessage: string;
   lastTime: string;
   unread: number;
@@ -25,6 +27,8 @@ export default function Messages() {
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [editingName, setEditingName] = useState(false);
+  const [editNameValue, setEditNameValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,7 +51,7 @@ export default function Messages() {
       transports: ['websocket', 'polling'],
     });
 
-    socket.on('wa:message', (payload: WAMessage) => {
+    socket.on('wa:message', (payload: WAMessage & { name?: string | null }) => {
       // Update conversations list
       setConversations(prev => {
         const existing = prev.find(c => c.phone === payload.phone);
@@ -60,6 +64,7 @@ export default function Messages() {
         }
         return [...prev, {
           phone: payload.phone,
+          name: payload.name ?? null,
           lastMessage: payload.message,
           lastTime: payload.time,
           unread: 0,
@@ -102,6 +107,23 @@ export default function Messages() {
     }
   };
 
+  const handleSaveName = async () => {
+    if (!selectedPhone || !editNameValue.trim()) return;
+    try {
+      const cleanPhone = selectedPhone.replace('@lid', '').replace('@s.whatsapp.net', '');
+      await customersApi.updateByPhone(cleanPhone, { name: editNameValue.trim() });
+      setConversations(prev =>
+        prev.map(c =>
+          c.phone === selectedPhone ? { ...c, name: editNameValue.trim() } : c
+        )
+      );
+      setEditingName(false);
+      toast.success('Nome salvo');
+    } catch {
+      toast.error('Erro ao salvar nome');
+    }
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || !selectedPhone) return;
 
@@ -130,18 +152,20 @@ export default function Messages() {
   };
 
   const formatPhone = (phone: string) => {
-    const digits = phone.replace(/\D/g, '');
+    const cleaned = phone.replace(/@(lid|s\.whatsapp\.net)/g, '');
+    const digits = cleaned.replace(/\D/g, '');
     if (digits.length === 13) {
       return `+${digits.slice(0, 2)} (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
     }
     if (digits.length === 12) {
       return `+${digits.slice(0, 2)} (${digits.slice(2, 4)}) ${digits.slice(4, 8)}-${digits.slice(8)}`;
     }
-    return phone;
+    return cleaned;
   };
 
   const filteredConversations = conversations.filter(c =>
-    c.phone.includes(searchTerm) || c.lastMessage.toLowerCase().includes(searchTerm.toLowerCase()
+    c.phone.includes(searchTerm) || c.lastMessage.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.name && c.name.toLowerCase().includes(searchTerm.toLowerCase())
   ));
 
   return (
@@ -189,7 +213,7 @@ export default function Messages() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <p className="font-medium text-white text-sm truncate">
-                        {formatPhone(conv.phone)}
+                        {conv.name || formatPhone(conv.phone)}
                       </p>
                       <span className="text-xs text-gray-400">
                         {formatDate(conv.lastTime)}
@@ -220,10 +244,40 @@ export default function Messages() {
             <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
               <MessageCircle className="w-4 h-4 text-primary-600" />
             </div>
-            <div>
-              <p className="font-medium text-white text-sm">
-                {formatPhone(selectedPhone)}
-              </p>
+            <div className="flex-1 min-w-0">
+              {editingName ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={editNameValue}
+                    onChange={(e) => setEditNameValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
+                    className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    autoFocus
+                  />
+                  <button onClick={handleSaveName} className="p-1 hover:bg-gray-800 rounded text-green-400">
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setEditingName(false)} className="p-1 hover:bg-gray-800 rounded text-gray-400">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-white text-sm truncate">
+                    {conversations.find(c => c.phone === selectedPhone)?.name || formatPhone(selectedPhone)}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setEditNameValue(conversations.find(c => c.phone === selectedPhone)?.name || '');
+                      setEditingName(true);
+                    }}
+                    className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

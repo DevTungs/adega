@@ -61,6 +61,11 @@ export function emitAgentRequest(phone: string, customerName: string) {
   if (io) io.emit('wa:agent_request', { phone, customerName, time: new Date().toISOString() });
 }
 
+// PIX pending confirmation
+export function emitPixPending(phone: string, customerName: string, total: number) {
+  if (io) io.emit('pix:pending', { phone, customerName, total, time: new Date().toISOString() });
+}
+
 // WhatsApp events
 export function emitWAQR(qrDataUrl: string) {
   if (io) io.emit('wa:qr', { qr: qrDataUrl });
@@ -70,6 +75,6 @@ export function emitWAStatus(status: string) {
   if (io) io.emit('wa:status', { status });
 }
 
-export function emitWAMessage(phone: string, message: string, direction: 'in' | 'out') {
-  if (io) io.emit('wa:message', { phone, message, direction, time: new Date().toISOString() });
+export function emitWAMessage(phone: string, message: string, direction: 'in' | 'out', name?: string | null) {
+  if (io) io.emit('wa:message', { phone, message, direction, time: new Date().toISOString(), name });
 }

@@ -1,10 +1,16 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ordersService } from './orders.service';
+import { customersService } from '../customers/customers.service';
 import { printerService } from '../../services/printer/printer.service';
+import { settingsAgent } from '../../services/settings/settings.service';
 import { authMiddleware, getUser } from '../auth/auth.middleware';
 import { validateBody } from '../../shared/middlewares/validation';
 import { licenseOrderMiddleware } from '../license/license.middleware';
+import { whatsappSessionService } from '../whatsapp/whatsapp.service';
+import { messageFormatter } from '../whatsapp/whatsapp.formatter';
+import { baileysService } from '../../services/whatsapp/baileys.service';
+import { logger } from '../../shared/middlewares/logger';
 
 const paymentSplitSchema = z.object({
   label: z.string().min(1),
@@ -158,6 +164,86 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       const { date_from, date_to } = request.query as any;
       const stats = await ordersService.getStats(date_from, date_to);
       reply.send({ success: true, data: stats });
+    },
+  });
+
+  // PIX: Confirm payment — create order from pending session
+  app.post('/api/orders/confirm-pix', {
+    preHandler: [authMiddleware],
+    handler: async (request, reply) => {
+      const { phone } = request.body as { phone: string };
+      if (!phone) return reply.status(400).send({ success: false, message: 'phone is required' });
+
+      try {
+        const session = await whatsappSessionService.getOrCreate(phone);
+        const context = JSON.parse(session.context || '{}');
+
+        if (!context.items || context.items.length === 0) {
+          return reply.status(400).send({ success: false, message: 'Carrinho vazio' });
+        }
+
+        // Create customer if needed
+        const customer = await customersService.getOrCreateByPhone(phone);
+        if (context.customerName) {
+          await customersService.update(customer.id, { name: context.customerName });
+        }
+
+        // Build order items
+        const items = (context.items || []).map((item: any) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          variant_id: item.variant_id || undefined,
+          halves: item.halves || undefined,
+          modifiers: item.modifiers || undefined,
+        }));
+
+        const deliveryFee = settingsAgent.getDeliveryFee();
+        const result = await ordersService.create({
+          customer_id: customer.id,
+          items,
+          payment_method: 'pix',
+          delivery_address: context.address || '',
+          notes: context.notes || undefined,
+        });
+
+        const { order, stockWarnings } = result as any;
+
+        // Notify customer
+        const msg = messageFormatter.pixConfirmed(order.order_number);
+        try { await baileysService.sendMessage(phone, msg); } catch (e: any) { logger.error({ error: e?.message }, 'Failed to send PIX confirm notification'); }
+
+        // Reset session, keeping lastOrder for status tracking
+        await whatsappSessionService.updateState(phone, 'order_placed', {
+          lastOrderId: order.id,
+          lastOrderNumber: order.order_number,
+        });
+
+        reply.send({ success: true, data: order });
+      } catch (err: any) {
+        logger.error({ error: err.message, phone }, 'PIX confirm failed');
+        reply.status(500).send({ success: false, message: err.message });
+      }
+    },
+  });
+
+  // PIX: Reject payment — cancel pending order
+  app.post('/api/orders/reject-pix', {
+    preHandler: [authMiddleware],
+    handler: async (request, reply) => {
+      const { phone } = request.body as { phone: string };
+      if (!phone) return reply.status(400).send({ success: false, message: 'phone is required' });
+
+      try {
+        const session = await whatsappSessionService.getOrCreate(phone);
+
+        try { await baileysService.sendMessage(phone, messageFormatter.pixRejected()); } catch (e: any) { logger.error({ error: e?.message }, 'Failed to send PIX reject notification'); }
+
+        await whatsappSessionService.resetSession(phone);
+        reply.send({ success: true, message: 'PIX rejeitado' });
+      } catch (err: any) {
+        logger.error({ error: err.message, phone }, 'PIX reject failed');
+        reply.status(500).send({ success: false, message: err.message });
+      }
     },
   });
 }

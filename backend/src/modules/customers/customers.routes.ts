@@ -43,4 +43,14 @@ export async function registerCustomerRoutes(app: FastifyInstance) {
       reply.send({ success: true, data: customer });
     },
   });
+
+  // Update by phone number (used by WhatsApp messages page)
+  app.patch('/api/customers/phone/:phone', {
+    preHandler: [authMiddleware],
+    handler: async (request, reply) => {
+      const { phone } = request.params as { phone: string };
+      const customer = await customersService.updateByPhone(phone, request.body as any);
+      reply.send({ success: true, data: customer });
+    },
+  });
 }

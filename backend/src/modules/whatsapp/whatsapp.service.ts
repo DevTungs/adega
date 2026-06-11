@@ -13,6 +13,7 @@ export type SessionState =
   | 'awaiting_notes'
   | 'awaiting_variant'
   | 'awaiting_modifier'
+  | 'awaiting_pix_confirmation'
   | 'order_placed';
 
 export class WhatsAppSessionService {

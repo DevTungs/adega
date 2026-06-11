@@ -5,9 +5,9 @@ export default function Header() {
   const { user, logout } = useAuthStore();
 
   return (
-    <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+    <header className="bg-gray-900 border-b border-gray-800 px-4 xl:px-6 py-3 xl:py-4 flex items-center justify-between">
       <div>
-        <h2 className="text-lg font-semibold text-white">Painel de Controle</h2>
+        <h2 className="text-base xl:text-lg font-semibold text-white">Painel de Controle</h2>
       </div>
       <div className="flex items-center gap-4">
         <button className="relative p-2 text-gray-400 hover:text-white">

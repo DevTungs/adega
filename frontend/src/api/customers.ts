@@ -12,4 +12,7 @@ export const customersApi = {
 
   update: (id: string, data: any) =>
     api.patch(`/customers/${id}`, data),
+
+  updateByPhone: (phone: string, data: any) =>
+    api.patch(`/customers/phone/${phone}`, data),
 };

@@ -46,8 +46,8 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside className="w-64 bg-gray-900 text-white min-h-screen flex flex-col">
-      <div className="p-6 border-b border-gray-800">
+    <aside className="w-56 xl:w-64 bg-gray-900 text-white min-h-screen flex flex-col overflow-y-auto">
+      <div className="p-4 xl:p-6 border-b border-gray-800">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary-500/20">
             <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -60,21 +60,21 @@ export default function Sidebar() {
           </div>
         </div>
       </div>
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-2 xl:p-4 space-y-0.5">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.to === '/'}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              `flex items-center gap-3 px-3 xl:px-4 py-2 xl:py-3 rounded-lg transition-colors text-sm xl:text-base ${
                 isActive
                   ? 'bg-primary-600 text-white'
                   : 'text-gray-400 hover:bg-gray-800 hover:text-white'
               }`
             }
           >
-            <item.icon size={20} />
+            <item.icon size={18} />
             <span>{item.label}</span>
           </NavLink>
         ))}

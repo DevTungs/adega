@@ -5,7 +5,6 @@ import makeWASocket, {
   Browsers,
   WASocket,
   proto,
-  generateWAMessageFromContent,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import path from 'path';
@@ -15,6 +14,7 @@ import { logger } from '../../shared/middlewares/logger';
 import { config } from '../../config/app.config';
 import { whatsappHandler } from '../../modules/whatsapp/whatsapp.handler';
 import { emitWAQR, emitWAStatus, emitWAMessage } from '../websocket/ws.server';
+import { customersModel } from '../../modules/customers/customers.model';
 
 const SESSION_PATH = path.resolve(__dirname, '../../../../', config.waSessionPath);
 
@@ -43,8 +43,10 @@ class BaileysService {
   private botActive = true;
   private lastConnectTime = 0;
   private quickDisconnectCount = 0;
-  private connectionGeneration = 0;  // Track connection generations to ignore stale events
+  private connectionGeneration = 0;
   private messages: Map<string, WAMessage[]> = new Map();
+  private contactNames: Map<string, string> = new Map();
+  private jidMap: Map<string, string> = new Map();
   private pendingMessages: PendingMessage[] = [];
 
   getState(): WAConnectionState {
@@ -64,13 +66,22 @@ class BaileysService {
     logger.info({ active }, 'Bot active state changed');
   }
 
-  getConversations(): Array<{ phone: string; lastMessage: string; lastTime: string; unread: number }> {
-    const conversations: Array<{ phone: string; lastMessage: string; lastTime: string; unread: number }> = [];
+  getConversations(): Array<{ phone: string; name: string | null; lastMessage: string; lastTime: string; unread: number }> {
+    const conversations: Array<{ phone: string; name: string | null; lastMessage: string; lastTime: string; unread: number }> = [];
     for (const [phone, msgs] of this.messages.entries()) {
       if (msgs.length === 0) continue;
       const lastMsg = msgs[msgs.length - 1];
+      let name = this.contactNames.get(phone) || null;
+      if (!name) {
+        const customer = customersModel.findByPhone(phone);
+        if (customer?.name) {
+          name = customer.name;
+          this.contactNames.set(phone, name);
+        }
+      }
       conversations.push({
         phone,
+        name,
         lastMessage: lastMsg.message,
         lastTime: lastMsg.time,
         unread: 0,
@@ -93,7 +104,6 @@ class BaileysService {
       direction,
       time: new Date().toISOString(),
     });
-    // Keep last 100 messages per conversation
     const msgs = this.messages.get(phone)!;
     if (msgs.length > 100) {
       this.messages.set(phone, msgs.slice(-100));
@@ -121,7 +131,6 @@ class BaileysService {
     this.pendingMessages = [];
     for (const pending of queue) {
       if (!this.sock || this.state !== 'connected') {
-        // Connection lost again, re-queue remaining
         this.pendingMessages.push(...queue.slice(queue.indexOf(pending)));
         break;
       }
@@ -139,7 +148,7 @@ class BaileysService {
           logger.warn({ phone: pending.phone }, '[MSG] Pending send failed after 3 attempts, discarding');
         }
       }
-      await new Promise(r => setTimeout(r, 500)); // Delay between sends
+      await new Promise(r => setTimeout(r, 500));
     }
   }
 
@@ -149,12 +158,10 @@ class BaileysService {
       return;
     }
 
-    // Ensure session directory exists
     if (!fs.existsSync(SESSION_PATH)) {
       fs.mkdirSync(SESSION_PATH, { recursive: true });
     }
 
-    // Increment generation to ignore events from old sockets
     const generation = ++this.connectionGeneration;
 
     this.state = 'connecting';
@@ -181,9 +188,7 @@ class BaileysService {
         generateHighQualityLinkPreview: false,
       });
 
-      // Handle QR code
       this.sock.ev.on('connection.update', async (update) => {
-        // Ignore events from old socket generations
         if (generation !== this.connectionGeneration) {
           logger.debug({ generation, current: this.connectionGeneration }, 'Ignoring stale event from old socket');
           return;
@@ -192,7 +197,6 @@ class BaileysService {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          // Ignore QR events if already connected (Baileys sometimes emits spurious QR events)
           if (this.state === 'connected') {
             logger.debug('Ignoring QR event - already connected');
             return;
@@ -214,7 +218,6 @@ class BaileysService {
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
           const connectedDuration = Date.now() - this.lastConnectTime;
 
-          // Track quick disconnects (connect -> disconnect within 30s)
           if (connectedDuration < 30000 && this.lastConnectTime > 0) {
             this.quickDisconnectCount++;
             logger.warn({ quickDisconnectCount: this.quickDisconnectCount, connectedDuration }, 'Quick disconnect detected');
@@ -224,7 +227,6 @@ class BaileysService {
 
           logger.info({ statusCode, shouldReconnect }, 'Connection closed');
 
-          // Break the loop: session is corrupted after 3 quick disconnects
           if (this.quickDisconnectCount >= 3) {
             logger.error('Session corrupted - clearing session, scan QR again');
             this.clearSession();
@@ -245,14 +247,12 @@ class BaileysService {
 
           if (shouldReconnect && this.reconnectAttempts < this.maxReconnect) {
             this.reconnectAttempts++;
-            // Properly close old socket before reconnecting
             if (this.sock) {
               this.sock.end(undefined);
               this.sock = null;
             }
             this.state = 'disconnected';
             emitWAStatus('connecting');
-            // Exponential backoff: 3s, 6s, 12s, 24s, max 30s
             const delay = Math.min(3000 * Math.pow(2, this.reconnectAttempts - 1), 30000);
             logger.info({ attempt: this.reconnectAttempts, delay }, 'Reconnecting...');
             setTimeout(() => this.connect(), delay);
@@ -271,19 +271,14 @@ class BaileysService {
           this.lastConnectTime = Date.now();
           emitWAStatus('connected');
           logger.info('WhatsApp connected!');
-          // Re-send any messages that failed during disconnect
           this.flushPendingMessages();
         }
       });
 
-      // Save credentials on update
       this.sock.ev.on('creds.update', saveCreds);
 
-      // Handle incoming messages
       this.sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        // Ignore events from old socket generations
         if (generation !== this.connectionGeneration) return;
-
         if (type !== 'notify') return;
 
         for (const msg of messages) {
@@ -292,40 +287,45 @@ class BaileysService {
           const remoteJid = msg.key.remoteJid || '';
           if (!remoteJid) continue;
 
-          // Skip group messages - multiple checks
           if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) {
             logger.debug({ remoteJid }, 'Skipping group/broadcast message');
             continue;
           }
-          // Also skip if message has participant (group indicator)
           if (msg.key.participant) {
             logger.debug({ remoteJid, participant: msg.key.participant }, 'Skipping group message (has participant)');
             continue;
           }
 
           const messageText = this.extractMessageText(msg);
+          logger.info({ remoteJid, messageText, msgType: Object.keys(msg.message || {}).join(',') }, 'RAW message');
           if (!messageText) continue;
 
-          // Extract real phone number - handle @lid (linked device) format
           let phone = remoteJid;
-          const whatsappJid = remoteJid; // Keep original JID for sending messages
+          const whatsappJid = remoteJid;
           if (remoteJid.endsWith('@lid')) {
-            // Try to get real phone from message metadata
             const senderPn = (msg as any).senderPn || (msg as any).messageContextInfo?.senderPn;
             if (senderPn) {
               phone = senderPn.replace('@s.whatsapp.net', '');
-            }
-            // If still @lid, try participant field
-            if (phone.endsWith('@lid') && msg.key.participant) {
+            } else if (msg.key.participant) {
               phone = msg.key.participant.replace('@s.whatsapp.net', '');
+              if (phone.endsWith('@lid')) {
+                phone = phone.replace(':.*@lid|@lid', '');
+              }
             }
           }
 
+          this.jidMap.set(phone, whatsappJid);
+
           const senderName = msg.pushName || '';
 
-          logger.debug({ remoteJid, phone, whatsappJid, message: messageText, senderName }, 'WhatsApp message received');
+          logger.info({ remoteJid, phone, whatsappJid, message: messageText, senderName, msgType: Object.keys(msg.message || {}).join(',') }, 'WhatsApp message received');
           this.storeMessage(phone, messageText, 'in');
-          emitWAMessage(phone, messageText, 'in');
+          const customer = customersModel.findByPhone(phone);
+          const displayName = customer?.name || senderName;
+          if (displayName) {
+            this.contactNames.set(phone, displayName);
+          }
+          emitWAMessage(phone, messageText, 'in', displayName);
 
           try {
             if (this.botActive) {
@@ -334,7 +334,16 @@ class BaileysService {
                 const isObj = typeof response === 'object';
                 const delay = isObj ? 500 : Math.min(300 + (response as string).length * 5, 2500);
                 await new Promise(r => setTimeout(r, delay));
-                await this.sendMessage(phone, response);
+                if (isObj) {
+                  const r = response as any;
+                  if (r._type === 'buttons') {
+                    await this.sendButtons(phone, r.text, r.buttons);
+                  } else if (r._type === 'list') {
+                    await this.sendList(phone, r.title, r.description, r.buttonText, r.sections);
+                  }
+                } else {
+                  await this.sendMessage(phone, response);
+                }
               }
             }
           } catch (err: any) {
@@ -362,41 +371,28 @@ class BaileysService {
     logger.info('WhatsApp disconnected');
   }
 
-  async sendMessage(phone: string, message: string | object): Promise<boolean> {
-    const isInteractive = typeof message === 'object';
-    const textSummary = isInteractive ? '[Mensagem interativa]' : message;
-
-    // Wait for connection if currently reconnecting (max 5s)
+  async sendMessage(phone: string, message: string): Promise<boolean> {
     for (let i = 0; i < 5; i++) {
       if (this.sock && this.state === 'connected') break;
       await new Promise(r => setTimeout(r, 1000));
     }
 
     if (!this.sock || this.state !== 'connected') {
-      const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
-      this.pendingMessages.push({ phone, message: textSummary, jid, attempts: 1 });
+      const jid = this.jidMap.get(phone) || (phone.includes('@') ? phone : `${phone}@s.whatsapp.net`);
+      this.pendingMessages.push({ phone, message, jid, attempts: 1 });
       return false;
     }
 
-    const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+    const jid = this.jidMap.get(phone) || (phone.includes('@') ? phone : `${phone}@s.whatsapp.net`);
 
-    for (let attempt = 1; attempt <= 2; attempt++) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        if (isInteractive) {
-          // Interactive messages (listMessage, interactiveMessage) need generateWAMessageFromContent
-          const userJid = this.sock.user?.id || '';
-          const fullMsg = generateWAMessageFromContent(jid, message as proto.IMessage, {
-            userJid,
-          } as any);
-          await this.sock.relayMessage(jid, fullMsg.message as proto.IMessage, { messageId: fullMsg.key.id as string });
-        } else {
-          await this.sock.sendMessage(jid, { text: message as string });
-        }
-        this.storeMessage(phone, textSummary, 'out');
-        emitWAMessage(phone, textSummary, 'out');
+        await this.sock.sendMessage(jid, { text: message });
+        this.storeMessage(phone, message, 'out');
+        emitWAMessage(phone, message, 'out');
         return true;
       } catch (err: any) {
-        logger.error({ error: err.message, phone, attempt }, '[MSG] Failed to send');
+        logger.error({ error: err.message, phone, attempt, jid }, '[MSG] Failed to send');
 
         if (attempt === 1) {
           for (let i = 0; i < 3; i++) {
@@ -404,50 +400,34 @@ class BaileysService {
             await new Promise(r => setTimeout(r, 1000));
           }
           if (!this.sock || this.state !== 'connected') {
-            this.pendingMessages.push({ phone, message: textSummary, jid, attempts: 1 });
+            this.pendingMessages.push({ phone, message, jid, attempts: 1 });
             return false;
           }
         }
       }
     }
 
-    this.pendingMessages.push({ phone, message: textSummary, jid, attempts: 1 });
+    this.pendingMessages.push({ phone, message, jid, attempts: 1 });
     return false;
   }
 
   async sendButtons(phone: string, contentText: string, buttons: Array<{ id: string; text: string }>): Promise<boolean> {
-    const msg = {
-      interactiveMessage: {
-        body: { text: contentText },
-        nativeFlowMessage: {
-          buttons: buttons.map(b => ({
-            name: 'quick_reply',
-            buttonParamsJson: JSON.stringify({ display_text: b.text, id: b.id }),
-          })),
-        },
-      },
-    };
-    return this.sendMessage(phone, msg);
+    const lines = buttons.map(b => b.text);
+    const text = `${contentText}\n\n${lines.join('\n')}\n\n_Responda com sua escolha._`;
+    return this.sendMessage(phone, text);
   }
 
   async sendList(phone: string, title: string, description: string, buttonText: string, sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>): Promise<boolean> {
-    const msg = {
-      listMessage: {
-        title,
-        description,
-        buttonText,
-        listType: 2,
-        sections: sections.map(s => ({
-          title: s.title,
-          rows: s.rows.map(r => ({
-            rowId: r.id,
-            title: r.title,
-            description: r.description || '',
-          })),
-        })),
-      },
-    };
-    return this.sendMessage(phone, msg);
+    const lines: string[] = [];
+    for (const section of sections) {
+      lines.push(`\n*${section.title}*`);
+      for (const row of section.rows) {
+        const desc = row.description ? ` - ${row.description}` : '';
+        lines.push(`• ${row.title}${desc}`);
+      }
+    }
+    const text = `${description}\n${lines.join('\n')}\n\nDigite o nome da opção desejada.`;
+    return this.sendMessage(phone, text);
   }
 
   private extractMessageText(msg: proto.IWebMessageInfo): string | null {
@@ -460,6 +440,15 @@ class BaileysService {
     if (m.videoMessage?.caption) return m.videoMessage.caption;
     if (m.buttonsResponseMessage?.selectedButtonId) return m.buttonsResponseMessage.selectedButtonId;
     if (m.listResponseMessage?.singleSelectReply?.selectedRowId) return m.listResponseMessage.singleSelectReply.selectedRowId;
+    if (m.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson) {
+      try {
+        const params = JSON.parse(m.interactiveResponseMessage.nativeFlowResponseMessage.paramsJson);
+        return params.id || params.display_text || m.interactiveResponseMessage.nativeFlowResponseMessage.paramsJson;
+      } catch {
+        return m.interactiveResponseMessage.nativeFlowResponseMessage.paramsJson;
+      }
+    }
+    if (m.interactiveResponseMessage?.body?.text) return m.interactiveResponseMessage.body.text;
 
     return null;
   }

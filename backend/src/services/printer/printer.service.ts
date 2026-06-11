@@ -482,217 +482,319 @@ $stream.Close()
       'Printing cupom'
     );
 
+    // Try node-thermal-printer first (network printers, Linux CUPS)
     try {
       const connected = await this.initPrinter();
+      if (connected) {
+        const p = this.printer;
 
-      if (!connected) {
+        p.alignCenter();
+
+        p.setTextSize(1, 1);
+        p.bold(true);
+        p.println(store.name.toUpperCase());
+        p.bold(false);
+        p.setTextSize(0, 0);
+
+        if (store.document) {
+          p.println(`CNPJ: ${this.formatCPF(store.document)}`);
+        }
+
+        if (store.ie) {
+          p.println(`IE: ${store.ie}`);
+        }
+
+        if (store.im) {
+          p.println(`IM: ${store.im}`);
+        }
+
+        if (store.address) {
+          p.println(store.address);
+        }
+
+        if (store.phone) {
+          p.println(`Tel: ${store.phone}`);
+        }
+
+        p.println(this.hr());
+
+        p.bold(true);
+        p.setTextSize(0, 1);
+        p.println('CUPOM NAO FISCAL');
+        p.setTextSize(0, 0);
+        p.bold(false);
+
+        p.println(this.hr());
+
+        p.alignLeft();
+
+        p.println(this.row('Pedido N.:', String(order.order_number).padStart(6, '0')));
+        p.println(this.row('Data:', new Date(order.created_at).toLocaleString('pt-BR')));
+
+        if (order.order_type) {
+          const tipo = order.order_type === 'delivery' ? 'DELIVERY' : 'BALCAO';
+          p.println(this.row('Tipo:', tipo));
+        }
+
+        if (order.customer_name || order.customer_phone) {
+          p.println(this.hr('-'));
+
+          if (order.customer_name) {
+            p.println(this.row('Cliente:', this.truncate(order.customer_name, 30)));
+          }
+
+          if (order.customer_phone) {
+            p.println(this.row('Tel:', order.customer_phone));
+          }
+
+          if (order.delivery_address) {
+            p.println('End: ' + this.truncate(order.delivery_address, this.PAPER_WIDTH - 5));
+          }
+        }
+
+        p.println(this.hr());
+
+        p.bold(true);
+        p.println(this.row('COD  DESCRICAO', 'VALOR'));
+        p.bold(false);
+
+        p.println(this.hr('-'));
+
+        const items = order.items || [];
+        for (let i = 0; i < items.length; i++) {
+          p.println(this.itemLine(items[i], i + 1));
+        }
+
+        p.println(this.hr('='));
+
+        const subtotal = Number(order.subtotal || 0);
+        const discount = Number(order.discount || 0);
+        const deliveryFee = Number(order.delivery_fee || 0);
+        const total = Number(order.total || 0);
+
+        p.println(this.totalLine('SUBTOTAL', subtotal));
+
+        if (discount > 0) {
+          p.println(this.totalLine('DESCONTO (-)', discount));
+        }
+
+        if (deliveryFee > 0) {
+          p.println(this.totalLine('TAXA ENTREGA', deliveryFee));
+        }
+
+        p.println(this.hr('='));
+
+        p.bold(true);
+        p.setTextSize(0, 1);
+        p.println(this.row('TOTAL:', this.moneyRaw(total)));
+        p.setTextSize(0, 0);
+        p.bold(false);
+
+        p.println(this.hr('='));
+
+        if (order.payment_method) {
+          p.println(this.row('Forma Pgto:', this.formatPayment(order.payment_method)));
+        }
+
+        const paidAmount = Number(order.paid_amount || total);
+        const change = Number(order.change || 0);
+
+        if (order.payment_method === 'cash' && paidAmount > 0) {
+          p.println(this.row('Valor Pago:', this.moneyRaw(paidAmount)));
+          if (change > 0) {
+            p.println(this.row('Troco:', this.moneyRaw(change)));
+          }
+        }
+
+        p.println(this.hr());
+
+        if (order.notes) {
+          p.println('');
+          p.bold(true);
+          p.println('Observacoes:');
+          p.bold(false);
+          p.println(this.truncate(order.notes, this.PAPER_WIDTH));
+          p.println(this.hr());
+        }
+
+        p.alignCenter();
+
+        p.println('');
+        p.println('Obrigado pela preferencia!');
+        p.println('Volte sempre :)');
+        p.println('');
+
+        p.println(this.hr());
+        p.println(new Date().toLocaleString('pt-BR'));
+        p.println(`Pedido #${order.order_number}`);
+        p.println('');
+
+        p.println('');
+        p.println('');
+
+        p.cut();
+
+        await p.execute();
+
+        logger.info({ order: order.order_number }, 'Cupom printed successfully');
+        return true;
+      }
+    } catch (err: any) {
+      logger.warn({ error: err.message }, 'Thermal printer failed, trying OS fallback');
+    }
+
+    // Fallback: build plain-text receipt and print via OS
+    try {
+      const config = this.getSettings();
+      if (!config.printerName) {
         this.logTicket(order, store);
         return false;
       }
-
-      const p = this.printer;
-
-      // =====================================================
-      // CABECALHO — DADOS DO ESTABELECIMENTO
-      // =====================================================
-
-      p.alignCenter();
-
-      p.setTextSize(1, 1);
-      p.bold(true);
-      p.println(store.name.toUpperCase());
-      p.bold(false);
-      p.setTextSize(0, 0);
-
-      if (store.document) {
-        p.println(`CNPJ: ${this.formatCPF(store.document)}`);
-      }
-
-      if (store.ie) {
-        p.println(`IE: ${store.ie}`);
-      }
-
-      if (store.im) {
-        p.println(`IM: ${store.im}`);
-      }
-
-      if (store.address) {
-        p.println(store.address);
-      }
-
-      if (store.phone) {
-        p.println(`Tel: ${store.phone}`);
-      }
-
-      p.println(this.hr());
-
-      // =====================================================
-      // TIPO DE DOCUMENTO
-      // =====================================================
-
-      p.bold(true);
-      p.setTextSize(0, 1);
-      p.println('CUPOM NAO FISCAL');
-      p.setTextSize(0, 0);
-      p.bold(false);
-
-      p.println(this.hr());
-
-      // =====================================================
-      // DADOS DO PEDIDO
-      // =====================================================
-
-      p.alignLeft();
-
-      p.println(this.row('Pedido N.:', String(order.order_number).padStart(6, '0')));
-      p.println(this.row('Data:', new Date(order.created_at).toLocaleString('pt-BR')));
-
-      if (order.order_type) {
-        const tipo = order.order_type === 'delivery' ? 'DELIVERY' : 'BALCAO';
-        p.println(this.row('Tipo:', tipo));
-      }
-
-      // =====================================================
-      // DADOS DO CLIENTE
-      // =====================================================
-
-      if (order.customer_name || order.customer_phone) {
-        p.println(this.hr('-'));
-
-        if (order.customer_name) {
-          p.println(this.row('Cliente:', this.truncate(order.customer_name, 30)));
-        }
-
-        if (order.customer_phone) {
-          p.println(this.row('Tel:', order.customer_phone));
-        }
-
-        if (order.delivery_address) {
-          p.println('End: ' + this.truncate(order.delivery_address, this.PAPER_WIDTH - 5));
-        }
-      }
-
-      p.println(this.hr());
-
-      // =====================================================
-      // ITENS
-      // =====================================================
-
-      p.bold(true);
-      p.println(this.row('COD  DESCRICAO', 'VALOR'));
-      p.bold(false);
-
-      p.println(this.hr('-'));
-
-      const items = order.items || [];
-      for (let i = 0; i < items.length; i++) {
-        p.println(this.itemLine(items[i], i + 1));
-      }
-
-      p.println(this.hr('='));
-
-      // =====================================================
-      // TOTAIS
-      // =====================================================
-
-      const subtotal = Number(order.subtotal || 0);
-      const discount = Number(order.discount || 0);
-      const deliveryFee = Number(order.delivery_fee || 0);
-      const total = Number(order.total || 0);
-
-      p.println(this.totalLine('SUBTOTAL', subtotal));
-
-      if (discount > 0) {
-        p.println(this.totalLine('DESCONTO (-)', discount));
-      }
-
-      if (deliveryFee > 0) {
-        p.println(this.totalLine('TAXA ENTREGA', deliveryFee));
-      }
-
-      p.println(this.hr('='));
-
-      p.bold(true);
-      p.setTextSize(0, 1);
-      p.println(this.row('TOTAL:', this.moneyRaw(total)));
-      p.setTextSize(0, 0);
-      p.bold(false);
-
-      p.println(this.hr('='));
-
-      // =====================================================
-      // PAGAMENTO
-      // =====================================================
-
-      if (order.payment_method) {
-        p.println(this.row('Forma Pgto:', this.formatPayment(order.payment_method)));
-      }
-
-      const paidAmount = Number(order.paid_amount || total);
-      const change = Number(order.change || 0);
-
-      if (order.payment_method === 'cash' && paidAmount > 0) {
-        p.println(this.row('Valor Pago:', this.moneyRaw(paidAmount)));
-        if (change > 0) {
-          p.println(this.row('Troco:', this.moneyRaw(change)));
-        }
-      }
-
-      p.println(this.hr());
-
-      // =====================================================
-      // OBSERVACOES
-      // =====================================================
-
-      if (order.notes) {
-        p.println('');
-        p.bold(true);
-        p.println('Observacoes:');
-        p.bold(false);
-        p.println(this.truncate(order.notes, this.PAPER_WIDTH));
-        p.println(this.hr());
-      }
-
-      // =====================================================
-      // RODAPE
-      // =====================================================
-
-      p.alignCenter();
-
-      p.println('');
-      p.println('Obrigado pela preferencia!');
-      p.println('Volte sempre :)');
-      p.println('');
-
-      p.println(this.hr());
-      p.println(new Date().toLocaleString('pt-BR'));
-      p.println(`Pedido #${order.order_number}`);
-      p.println('');
-
-      p.println('');
-      p.println('');
-
-      p.cut();
-
-      await p.execute();
-
-      logger.info(
-        {
-          order: order.order_number,
-        },
-        'Cupom printed successfully'
-      );
-
-      return true;
-
+      const receipt = this.buildPlainTextReceipt(order, store);
+      return this.printRawText(receipt, config.printerName);
     } catch (err: any) {
-      logger.error(
-        { error: err.message },
-        'Print failed'
-      );
-
+      logger.error({ error: err.message }, 'All print methods failed');
       this.logTicket(order, store);
       return false;
+    }
+  }
+
+  private buildPlainTextReceipt(order: any, store: any): string[] {
+    const lines: string[] = [];
+
+    const addLine = (text: string) => lines.push(text);
+    const addEmpty = () => lines.push('');
+
+    addEmpty();
+    addLine(this.center(store.name.toUpperCase()));
+    if (store.document) addLine(`CNPJ: ${this.formatCPF(store.document)}`);
+    if (store.ie) addLine(`IE: ${store.ie}`);
+    if (store.im) addLine(`IM: ${store.im}`);
+    if (store.address) addLine(store.address);
+    if (store.phone) addLine(`Tel: ${store.phone}`);
+    addLine(this.hr());
+    addLine(this.center('CUPOM NAO FISCAL'));
+    addLine(this.hr());
+    addLine(this.row('Pedido N.:', String(order.order_number).padStart(6, '0')));
+    addLine(this.row('Data:', new Date(order.created_at).toLocaleString('pt-BR')));
+    if (order.order_type) {
+      addLine(this.row('Tipo:', order.order_type === 'delivery' ? 'DELIVERY' : 'BALCAO'));
+    }
+
+    if (order.customer_name || order.customer_phone) {
+      addLine(this.hr('-'));
+      if (order.customer_name) addLine(this.row('Cliente:', this.truncate(order.customer_name, 30)));
+      if (order.customer_phone) addLine(this.row('Tel:', order.customer_phone));
+      if (order.delivery_address) addLine('End: ' + this.truncate(order.delivery_address, this.PAPER_WIDTH - 5));
+    }
+
+    addLine(this.hr());
+    addLine(this.row('COD  DESCRICAO', 'VALOR'));
+    addLine(this.hr('-'));
+
+    const items = order.items || [];
+    for (let i = 0; i < items.length; i++) {
+      addLine(this.itemLine(items[i], i + 1));
+    }
+
+    addLine(this.hr('='));
+
+    const subtotal = Number(order.subtotal || 0);
+    const discount = Number(order.discount || 0);
+    const deliveryFee = Number(order.delivery_fee || 0);
+    const total = Number(order.total || 0);
+
+    addLine(this.totalLine('SUBTOTAL', subtotal));
+    if (discount > 0) addLine(this.totalLine('DESCONTO (-)', discount));
+    if (deliveryFee > 0) addLine(this.totalLine('TAXA ENTREGA', deliveryFee));
+    addLine(this.hr('='));
+    addLine(this.row('TOTAL:', this.moneyRaw(total)));
+    addLine(this.hr('='));
+
+    if (order.payment_method) {
+      addLine(this.row('Forma Pgto:', this.formatPayment(order.payment_method)));
+    }
+
+    const paidAmount = Number(order.paid_amount || total);
+    const change = Number(order.change || 0);
+    if (order.payment_method === 'cash' && paidAmount > 0) {
+      addLine(this.row('Valor Pago:', this.moneyRaw(paidAmount)));
+      if (change > 0) addLine(this.row('Troco:', this.moneyRaw(change)));
+    }
+
+    addLine(this.hr());
+
+    if (order.notes) {
+      addEmpty();
+      addLine('Observacoes:');
+      addLine(this.truncate(order.notes, this.PAPER_WIDTH));
+      addLine(this.hr());
+    }
+
+    addEmpty();
+    addLine(this.center('Obrigado pela preferencia!'));
+    addLine(this.center('Volte sempre :)'));
+    addEmpty();
+    addLine(this.hr());
+    addLine(new Date().toLocaleString('pt-BR'));
+    addLine(`Pedido #${order.order_number}`);
+    addEmpty();
+    addEmpty();
+
+    return lines;
+  }
+
+  private printRawText(lines: string[], printerName: string): boolean {
+    const text = lines.join('\n');
+    if (process.platform === 'win32') {
+      return this.printTextWindows(text, printerName);
+    }
+    return this.printTextLinux(text, printerName);
+  }
+
+  private printTextWindows(text: string, printerName: string): boolean {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+
+    const tmpFile = path.join(os.tmpdir(), `ticket_${Date.now()}.txt`);
+    try {
+      fs.writeFileSync(tmpFile, text, 'utf-8');
+      const escapedPrinter = printerName.replace(/'/g, "''");
+      const escapedFile = tmpFile.replace(/'/g, "''");
+      execSync(
+        `powershell -NoProfile -Command "Get-Content '${escapedFile}' | Out-Printer -Name '${escapedPrinter}'"`,
+        { encoding: 'utf-8', timeout: 30000 }
+      );
+      logger.info({ printer: printerName }, 'Windows text print success');
+      return true;
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Windows text print failed');
+      return false;
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  }
+
+  private printTextLinux(text: string, printerName: string): boolean {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+
+    const tmpFile = path.join(os.tmpdir(), `ticket_${Date.now()}.txt`);
+    try {
+      fs.writeFileSync(tmpFile, text, 'utf-8');
+      const escapedName = printerName.replace(/(["\s$`\\])/g, '\\$1');
+      execSync(`lp -d "${escapedName}" -o raw "${tmpFile}" 2>/dev/null`, {
+        encoding: 'utf-8', timeout: 30000,
+      });
+      logger.info({ printer: printerName }, 'Linux text print success');
+      return true;
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Linux text print failed');
+      return false;
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
     }
   }
 

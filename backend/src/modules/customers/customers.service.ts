@@ -26,6 +26,11 @@ export class CustomersService {
     return customersModel.update(id, data);
   }
 
+  async updateByPhone(phone: string, data: Partial<Customer>) {
+    const customer = await this.getOrCreateByPhone(phone);
+    return customersModel.update(customer.id, data);
+  }
+
   async getOrders(customerId: string, limit?: number) {
     await this.getById(customerId);
     return customersModel.getOrders(customerId, limit);

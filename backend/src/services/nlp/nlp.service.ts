@@ -47,8 +47,6 @@ class NLPService {
   private dbCategorySuggestions: Record<string, string[]> = {};
   private variantAliases: Record<string, { variant: any; product: any }> = {};
   private modifierOptionAliases: Record<string, { product: any; modifier: any; option: any }> = {};
-  private catalogLoaded = false;
-
   private normalize(text: string): string {
     return text
       .toLowerCase()
@@ -60,69 +58,73 @@ class NLPService {
   }
 
   private async ensureCatalog() {
-    if (!this.catalogLoaded) {
-      this.catalog = await productsService.getCatalog();
-      this.allProducts = this.catalog.flatMap((cat: any) => cat.products);
+    this.catalog = await productsService.getCatalog();
+    this.allProducts = this.catalog.flatMap((cat: any) => cat.products);
 
-      // Load aliases from DB
-      try {
-        const db = getDb();
-        const rows = db.all('SELECT pa.alias, p.name FROM product_aliases pa JOIN products p ON p.id = pa.product_id');
-        this.dbAliases = {};
-        for (const row of rows) {
-          this.dbAliases[this.normalize(row.alias)] = row.name;
-        }
-      } catch { /* ignore */ }
-
-      // Build category suggestions from catalog
-      this.dbCategorySuggestions = {};
-      for (const cat of this.catalog) {
-        if (cat.products && cat.products.length > 0) {
-          const names = cat.products.map((p: any) => p.name);
-          this.dbCategorySuggestions[this.normalize(cat.name)] = names;
-          // Also add slug as key
-          if (cat.slug) this.dbCategorySuggestions[this.normalize(cat.slug)] = names;
-        }
+    // Load aliases from DB
+    try {
+      const db = getDb();
+      const rows = db.all('SELECT pa.alias, p.name FROM product_aliases pa JOIN products p ON p.id = pa.product_id');
+      this.dbAliases = {};
+      for (const row of rows) {
+        this.dbAliases[this.normalize(row.alias)] = row.name;
       }
+    } catch { /* ignore */ }
 
-      // Build variant aliases from products that have variants
-      this.variantAliases = {};
-      for (const cat of this.catalog) {
-        for (const product of (cat.products || [])) {
-          if (product.variants && product.variants.length > 0) {
-            for (const v of product.variants) {
-              if (v.is_active === 0) continue;
-              // "calabresa grande" + "pizza calabresa grande"
-              const keys = [
-                `${this.normalize(product.name)} ${this.normalize(v.name)}`,
-                `${this.normalize(v.name)} ${this.normalize(product.name)}`,
-              ];
-              for (const key of keys) {
-                this.variantAliases[key] = { variant: v, product };
-              }
-            }
-          }
-        }
+    // Build category suggestions from catalog
+    this.dbCategorySuggestions = {};
+    for (const cat of this.catalog) {
+      if (cat.products && cat.products.length > 0) {
+        const names = cat.products.map((p: any) => p.name);
+        this.dbCategorySuggestions[this.normalize(cat.name)] = names;
+        // Also add slug as key
+        if (cat.slug) this.dbCategorySuggestions[this.normalize(cat.slug)] = names;
       }
-
-      // Build modifier option aliases (flavors for creates_splits modifiers)
-      this.modifierOptionAliases = {};
-      for (const cat of this.catalog) {
-        for (const product of (cat.products || [])) {
-          for (const mod of (product.modifiers || [])) {
-            if (mod.creates_splits && mod.options) {
-              for (const opt of mod.options) {
-                if (opt.is_active === 0) continue;
-                const key = this.normalize(opt.name);
-                this.modifierOptionAliases[key] = { product, modifier: mod, option: opt };
-              }
-            }
-          }
-        }
-      }
-
-      this.catalogLoaded = true;
     }
+
+    // Build variant aliases from products that have variants
+    this.variantAliases = {};
+    for (const cat of this.catalog) {
+      for (const product of (cat.products || [])) {
+        if (product.variants && product.variants.length > 0) {
+          for (const v of product.variants) {
+            if (v.is_active === 0) continue;
+            // "calabresa grande" + "pizza calabresa grande"
+            const keys = [
+              `${this.normalize(product.name)} ${this.normalize(v.name)}`,
+              `${this.normalize(v.name)} ${this.normalize(product.name)}`,
+            ];
+            for (const key of keys) {
+              this.variantAliases[key] = { variant: v, product };
+            }
+          }
+        }
+      }
+    }
+
+    // Build modifier option aliases (flavors for creates_splits modifiers)
+    this.modifierOptionAliases = {};
+    for (const cat of this.catalog) {
+      for (const product of (cat.products || [])) {
+        for (const mod of (product.modifiers || [])) {
+          if (mod.creates_splits && mod.options) {
+            for (const opt of mod.options) {
+              if (opt.is_active === 0) continue;
+              const key = this.normalize(opt.name);
+              this.modifierOptionAliases[key] = { product, modifier: mod, option: opt };
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private isWholeWordMatch(message: string, aliasNorm: string, idx: number): boolean {
+    const beforeChar = idx > 0 ? message[idx - 1] : ' ';
+    const afterIdx = idx + aliasNorm.length;
+    const afterChar = afterIdx < message.length ? message[afterIdx] : ' ';
+    const isWordBoundary = (c: string) => /[\s]/.test(c);
+    return isWordBoundary(beforeChar) && isWordBoundary(afterChar);
   }
 
   async parseMessage(message: string, session?: any): Promise<ParsedMessage> {
@@ -543,26 +545,39 @@ class NLPService {
       .sort((a, b) => b[0].length - a[0].length);
 
     for (const [variantAlias, data] of sortedVariants) {
-      const idx = message.indexOf(variantAlias);
-      if (idx === -1) continue;
+      let idx = 0;
+      while (idx !== -1) {
+        idx = message.indexOf(variantAlias, idx);
+        if (idx === -1) break;
 
-      const rangeEnd = idx + variantAlias.length;
-      const overlaps = consumedRanges.some(([start, end]) =>
-        (idx >= start && idx < end) || (rangeEnd > start && rangeEnd <= end) || (idx <= start && rangeEnd >= end)
-      );
-      if (overlaps) continue;
+        const rangeEnd = idx + variantAlias.length;
 
-      const before = message.substring(0, idx).trim();
-      const quantity = this.extractQuantity(before);
+        if (!this.isWholeWordMatch(message, variantAlias, idx)) {
+          idx = rangeEnd;
+          continue;
+        }
 
-      results.push({
-        product: data.product,
-        quantity,
-        alias: variantAlias,
-        variant_id: data.variant.id,
-      });
+        const overlaps = consumedRanges.some(([start, end]) =>
+          (idx >= start && idx < end) || (rangeEnd > start && rangeEnd <= end) || (idx <= start && rangeEnd >= end)
+        );
+        if (overlaps) {
+          idx = rangeEnd;
+          continue;
+        }
 
-      consumedRanges.push([idx, rangeEnd]);
+        const before = message.substring(0, idx).trim();
+        const quantity = this.extractQuantity(before);
+
+        results.push({
+          product: data.product,
+          quantity,
+          alias: variantAlias,
+          variant_id: data.variant.id,
+        });
+
+        consumedRanges.push([idx, rangeEnd]);
+        break;
+      }
     }
 
     // 2. Merge DB aliases with static aliases, sort by length (longest first)
@@ -575,47 +590,64 @@ class NLPService {
 
     for (const [alias, productName] of sortedAliases) {
       const aliasNorm = this.normalize(alias);
-      const idx = message.indexOf(aliasNorm);
+      let idx = 0;
 
-      if (idx === -1) continue;
+      // Find all occurrences of this alias in the message (whole-word only)
+      while (idx !== -1) {
+        idx = message.indexOf(aliasNorm, idx);
+        if (idx === -1) break;
 
-      const rangeEnd = idx + aliasNorm.length;
+        const rangeEnd = idx + aliasNorm.length;
 
-      // Check if this range overlaps with any already consumed range
-      const overlaps = consumedRanges.some(([start, end]) =>
-        (idx >= start && idx < end) || (rangeEnd > start && rangeEnd <= end) || (idx <= start && rangeEnd >= end)
-      );
-      if (overlaps) continue;
+        // Check if this is a whole-word match
+        if (!this.isWholeWordMatch(message, aliasNorm, idx)) {
+          idx = rangeEnd;
+          continue;
+        }
 
-      // Find all products that match this alias name
-      const candidates = this.allProducts.filter((p: any) =>
-        this.normalize(p.name) === this.normalize(productName) && !matchedProductIds.has(p.id)
-      );
+        // Check if this range overlaps with any already consumed range
+        const overlaps = consumedRanges.some(([start, end]) =>
+          (idx >= start && idx < end) || (rangeEnd > start && rangeEnd <= end) || (idx <= start && rangeEnd >= end)
+        );
+        if (overlaps) {
+          idx = rangeEnd;
+          continue;
+        }
 
-      if (candidates.length === 0) continue;
+        // Find all products that match this alias name
+        const candidates = this.allProducts.filter((p: any) =>
+          this.normalize(p.name) === this.normalize(productName) && !matchedProductIds.has(p.id)
+        );
 
-      // Extract quantity: look for number BEFORE the alias
-      const before = message.substring(0, idx).trim();
-      const quantity = this.extractQuantity(before);
+        if (candidates.length === 0) {
+          idx = rangeEnd;
+          continue;
+        }
 
-      if (candidates.length > 1) {
-        results.push({
-          product: candidates[0],
-          quantity,
-          alias,
-          ambiguous: true,
-          options: candidates,
-        });
-      } else {
-        results.push({
-          product: candidates[0],
-          quantity,
-          alias,
-        });
-        matchedProductIds.add(candidates[0].id);
+        // Extract quantity: look for number BEFORE the alias
+        const before = message.substring(0, idx).trim();
+        const quantity = this.extractQuantity(before);
+
+        if (candidates.length > 1) {
+          results.push({
+            product: candidates[0],
+            quantity,
+            alias,
+            ambiguous: true,
+            options: candidates,
+          });
+        } else {
+          results.push({
+            product: candidates[0],
+            quantity,
+            alias,
+          });
+          matchedProductIds.add(candidates[0].id);
+        }
+
+        consumedRanges.push([idx, rangeEnd]);
+        break; // only first match per alias to avoid duplicate processing
       }
-
-      consumedRanges.push([idx, rangeEnd]);
     }
 
     // If no alias matched, try direct product name matching
