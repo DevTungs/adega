@@ -7,8 +7,19 @@ export class MessageFormatter {
     for (const category of catalog) {
       msg += `*${category.name}*\n`;
       for (const product of category.products) {
-        const price = product.promo_price || product.price;
-        msg += `• ${product.name} - R$ ${price.toFixed(2)}`;
+        const hasVariants = product.variants && product.variants.length > 0;
+        const activeVariants = hasVariants ? product.variants.filter((v: any) => v.is_active !== 0) : [];
+
+        if (activeVariants.length > 0) {
+          // Show product name with variant names and prices
+          const variantList = activeVariants
+            .map((v: any) => `${v.name} R$ ${(v.promo_price || v.price).toFixed(2)}`)
+            .join(', ');
+          msg += `• ${product.name} - ${variantList}`;
+        } else {
+          const price = product.promo_price || product.price;
+          msg += `• ${product.name} - R$ ${price.toFixed(2)}`;
+        }
         if (product.promo_price) msg += ' 🏷️ *PROMO*';
         msg += '\n';
       }
@@ -20,7 +31,7 @@ export class MessageFormatter {
 
 
   orderConfirmation(items: Array<{ name: string; quantity: number; price: number; total: number }>, subtotal: number): string {
-    const deliveryFee = settingsAgent.getDeliveryFee();
+    const deliveryFee = settingsAgent.calculateTimeBasedDeliveryFee();
     const minOrder = settingsAgent.getMinOrder();
     const total = subtotal + deliveryFee;
 
@@ -102,7 +113,7 @@ export class MessageFormatter {
 
   askPixProof(pixKey: string, items: any[]): string {
     const subtotal = (items || []).reduce((s: number, i: any) => s + (i.price || 0) * (i.quantity || 0), 0);
-    const deliveryFee = settingsAgent.getDeliveryFee();
+    const deliveryFee = settingsAgent.calculateTimeBasedDeliveryFee();
     const total = subtotal + deliveryFee;
 
     return `💳 *PIX*\n\n` +

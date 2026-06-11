@@ -44,7 +44,7 @@ type HandlerResponse = string | {
   description: string;
   buttonText: string;
   sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }>;
-};
+} | null;
 
 function buttons(text: string, ...btns: Array<{ id: string; text: string }>): HandlerResponse {
   return { _type: 'buttons', text, buttons: btns };
@@ -104,6 +104,9 @@ export class WhatsAppHandler {
 
     // Handle based on session state
     switch (session.state) {
+      case 'agent_active':
+        // Bot is paused - human agent is handling the conversation
+        return null;
       case 'idle':
         return this.handleIdle(normalizedPhone, normalized, session, senderName);
       case 'awaiting_items':
@@ -183,6 +186,11 @@ export class WhatsAppHandler {
     }
 
     if (message === '4' || ['atendente', 'humano', 'pessoa', 'falar com alguém'].includes(message)) {
+      logger.info({ phone, message }, '[HANDLER] Agent request from idle state');
+      await whatsappSessionService.updateState(phone, 'agent_active' as SessionState, {
+        ...JSON.parse(session.context || '{}'),
+        agentStartedAt: new Date().toISOString(),
+      });
       emitAgentRequest(phone, displayName);
       return 'Estamos conectando você com um atendente. Aguarde um momento! 🙏';
     }
@@ -837,10 +845,19 @@ export class WhatsAppHandler {
     }
 
     // Customer sent proof (any message counts). Notify admin.
-    const total = (context.items || []).reduce((s: number, i: any) => s + (i.price || 0) * (i.quantity || 0), 0);
+    const deliveryFee = settingsAgent.calculateTimeBasedDeliveryFee();
+    const total = (context.items || []).reduce((s: number, i: any) => s + (i.price || 0) * (i.quantity || 0), 0) + deliveryFee;
     const pixKey = settingsAgent.getPixKey();
 
-    emitPixPending(phone, context.customerName || 'Cliente', total);
+    emitPixPending({
+      phone,
+      customerName: context.customerName || 'Cliente',
+      total,
+      items: (context.items || []).map((i: any) => ({ name: i.name || i.productName || 'Item', quantity: i.quantity || 1, price: i.price || 0 })),
+      address: context.address || '',
+      notes: context.notes || '',
+      deliveryFee,
+    });
 
     return buttons(
       messageFormatter.pixPending(pixKey, total),
@@ -897,6 +914,10 @@ export class WhatsAppHandler {
     }
 
     if (['atendente', 'humano', '4'].includes(message)) {
+      await whatsappSessionService.updateState(phone, 'agent_active' as SessionState, {
+        ...context,
+        agentStartedAt: new Date().toISOString(),
+      });
       emitAgentRequest(phone, context.customerName || 'Cliente');
       return 'Estamos conectando você com um atendente. Aguarde um momento! 🙏';
     }
@@ -963,14 +984,18 @@ export class WhatsAppHandler {
   private mergeItemsLocal(existing: any[], newItems: any[]): any[] {
     const map = new Map<string, any>();
     for (const item of existing) {
-      if (item.product_id) map.set(item.product_id, { ...item });
+      if (item.product_id) {
+        const key = item.variant_id ? `${item.product_id}_${item.variant_id}` : item.product_id;
+        map.set(key, { ...item });
+      }
     }
     for (const item of newItems) {
-      const ex = map.get(item.product_id);
+      const key = item.variant_id ? `${item.product_id}_${item.variant_id}` : item.product_id;
+      const ex = map.get(key);
       if (ex) {
         ex.quantity += item.quantity;
       } else {
-        map.set(item.product_id, { ...item });
+        map.set(key, { ...item });
       }
     }
     return Array.from(map.values());
@@ -1021,8 +1046,6 @@ export class WhatsAppHandler {
         await whatsappSessionService.resetSession(phone);
         return `❌ ${err.message}`;
       }
-
-      const deliveryFee = settingsAgent.getDeliveryFee();
 
       const result = await ordersService.create({
         customer_id: customer.id,

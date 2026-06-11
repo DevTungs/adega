@@ -4,10 +4,11 @@ import Header from './Header';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useLicenseStore } from '../../stores/licenseStore';
 import { useEffect, useRef } from 'react';
-import toast from 'react-hot-toast';
+import PixConfirmationModal from '../pix/PixConfirmationModal';
+import AgentRequestModal from '../pix/AgentRequestModal';
 
 export default function Layout() {
-  useWebSocket();
+  const { pixPending, dismissPix, agentRequest, dismissAgent, agentQueue, setAgentQueue } = useWebSocket();
   const { license, fetchStatus } = useLicenseStore();
   const offlineToastShown = useRef(false);
 
@@ -32,6 +33,20 @@ export default function Layout() {
           </div>
         </main>
       </div>
+      {pixPending && (
+        <PixConfirmationModal
+          data={pixPending}
+          onClose={dismissPix}
+          onConfirmed={() => {}}
+        />
+      )}
+      {agentQueue.length > 0 && (
+        <AgentRequestModal
+          requests={agentQueue}
+          onClose={dismissAgent}
+          onRequestsChange={setAgentQueue}
+        />
+      )}
     </div>
   );
 }

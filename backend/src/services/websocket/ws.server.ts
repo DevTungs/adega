@@ -11,6 +11,7 @@ export function setupWebSocket(app: FastifyInstance) {
       origin: config.frontendUrl,
       credentials: true,
     },
+    maxHttpBufferSize: 10e6, // 10MB for image transfers
   });
 
   io.on('connection', (socket) => {
@@ -62,8 +63,17 @@ export function emitAgentRequest(phone: string, customerName: string) {
 }
 
 // PIX pending confirmation
-export function emitPixPending(phone: string, customerName: string, total: number) {
-  if (io) io.emit('pix:pending', { phone, customerName, total, time: new Date().toISOString() });
+export function emitPixPending(data: {
+  phone: string;
+  customerName: string;
+  total: number;
+  imageBase64?: string;
+  items?: Array<{ name: string; quantity: number; price: number }>;
+  address?: string;
+  notes?: string;
+  deliveryFee?: number;
+}) {
+  if (io) io.emit('pix:pending', { ...data, time: new Date().toISOString() });
 }
 
 // WhatsApp events

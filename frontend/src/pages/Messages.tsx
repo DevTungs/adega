@@ -169,11 +169,11 @@ export default function Messages() {
   ));
 
   return (
-    <div className="flex-1 min-h-0 flex bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden">
+    <div className="flex-1 min-h-0 flex bg-gray-900 rounded-lg shadow-sm border border-gray-800 overflow-hidden" style={{ height: 'calc(100vh - 140px)' }}>
       {/* Conversations List */}
       <div className={`${selectedPhone ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 border-r border-gray-800`}>
         {/* Search */}
-        <div className="p-3 border-b border-gray-800">
+        <div className="p-3 border-b border-gray-800 flex-shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
@@ -187,7 +187,7 @@ export default function Messages() {
         </div>
 
         {/* Conversations */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
@@ -232,9 +232,9 @@ export default function Messages() {
 
       {/* Chat Area */}
       {selectedPhone ? (
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0">
           {/* Header */}
-          <div className="p-3 border-b border-gray-800 bg-gray-900 flex items-center gap-3">
+          <div className="p-3 border-b border-gray-800 bg-gray-900 flex items-center gap-3 flex-shrink-0">
             <button
               onClick={() => setSelectedPhone(null)}
               className="md:hidden p-1 hover:bg-gray-800 rounded-lg"
@@ -282,7 +282,7 @@ export default function Messages() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800/50">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800/50 min-h-0">
             {messages.map((msg, i) => (
               <div
                 key={i}
@@ -308,7 +308,7 @@ export default function Messages() {
           </div>
 
           {/* Input */}
-          <div className="p-3 border-t border-gray-800 bg-gray-900">
+          <div className="p-3 border-t border-gray-800 bg-gray-900 flex-shrink-0">
             <div className="flex gap-2">
               <input
                 type="text"

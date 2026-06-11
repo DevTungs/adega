@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../auth/auth.middleware';
 import { licenseOrderMiddleware } from '../license/license.middleware';
 import { baileysService } from '../../services/whatsapp/baileys.service';
+import { whatsappSessionService } from './whatsapp.service';
 import { logger } from '../../shared/middlewares/logger';
 
 export async function registerWhatsAppRoutes(app: FastifyInstance) {
@@ -86,6 +87,23 @@ export async function registerWhatsAppRoutes(app: FastifyInstance) {
       const { phone } = request.params as { phone: string };
       const messages = baileysService.getMessages(phone);
       reply.send({ success: true, data: messages });
+    },
+  });
+
+  // Close agent request - resume bot
+  app.post('/api/whatsapp/close-agent', {
+    preHandler: [authMiddleware],
+    handler: async (request, reply) => {
+      const { phone } = request.body as { phone: string };
+      if (!phone) return reply.status(400).send({ success: false, message: 'phone is required' });
+
+      try {
+        await whatsappSessionService.resetSession(phone);
+        reply.send({ success: true, message: 'Agent request closed' });
+      } catch (err: any) {
+        logger.error({ error: err.message, phone }, 'Failed to close agent request');
+        reply.status(500).send({ success: false, message: err.message });
+      }
     },
   });
 }

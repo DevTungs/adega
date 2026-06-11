@@ -14,7 +14,8 @@ export type SessionState =
   | 'awaiting_variant'
   | 'awaiting_modifier'
   | 'awaiting_pix_confirmation'
-  | 'order_placed';
+  | 'order_placed'
+  | 'agent_active';
 
 export class WhatsAppSessionService {
   async getOrCreate(phone: string): Promise<WhatsAppSession> {

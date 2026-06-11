@@ -80,7 +80,7 @@ export class SettingsAgent {
     return { deliveryFee, minOrder, meetsMinimum, shortfall };
   }
 
-  private calculateTimeBasedDeliveryFee(): number {
+  calculateTimeBasedDeliveryFee(): number {
     const ranges = this.getDeliveryFeeRanges();
     if (ranges.length === 0) {
       return this.getDeliveryFee();

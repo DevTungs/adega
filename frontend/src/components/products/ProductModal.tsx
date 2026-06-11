@@ -97,11 +97,11 @@ export default function ProductModal({ product, categories, onSave, onClose }: P
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.category_id || !form.price) return;
+    if (!form.name || !form.category_id || form.price === undefined || form.price === null || form.price === '') return;
     setSaving(true);
     try {
       await onSave({
-        name: form.name, category_id: form.category_id, price: parseFloat(form.price),
+        name: form.name, category_id: form.category_id, price: parseFloat(form.price) || 0,
         promo_price: form.promo_price ? parseFloat(form.promo_price) : null,
         cost_price: form.cost_price ? parseFloat(form.cost_price) : null,
         stock: parseInt(form.stock) || 0, min_stock: parseInt(form.min_stock) || 5,

@@ -27,6 +27,19 @@ export async function start() {
 
   logger.info('[DB] Database ready');
 
+  // Reset all agent_active sessions on startup (bot was paused, resume it)
+  try {
+    const { qb } = await import('./config/database');
+    qb.update('whatsapp_sessions', {
+      state: 'idle',
+      context: '{}',
+      updated_at: new Date().toISOString(),
+    }, "state = 'agent_active'");
+    logger.info('[DB] Reset all agent_active sessions to idle');
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to reset agent_active sessions');
+  }
+
   // Build and start app
   const { buildApp } = await import('./server');
   const app = await buildApp();

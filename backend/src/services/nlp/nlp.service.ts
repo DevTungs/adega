@@ -267,21 +267,27 @@ class NLPService {
 
         // Determine price: variant price > product price > extracted price
         let unitPrice = e.price ?? (e.product.promo_price || e.product.price);
+        let itemName = e.product.name;
+        
         if (e.variant_id) {
           const v = e.product.variants?.find((v: any) => v.id === e.variant_id);
-          if (v) unitPrice = v.promo_price ?? v.price;
+          if (v) {
+            unitPrice = v.promo_price ?? v.price;
+            itemName = `${e.product.name} ${v.name}`;
+          }
         }
+        
         const modifiersTotal = (e.modifiers || []).reduce((s, m) => s + m.price_add, 0);
         unitPrice += modifiersTotal;
 
         const stock = e.product.stock ?? 999;
         if (stock <= 0) {
-          outOfStock.push(e.product.name);
+          outOfStock.push(itemName);
         } else if (stock < e.quantity) {
-          lowStock.push(`${e.product.name} (disponível: ${stock})`);
+          lowStock.push(`${itemName} (disponível: ${stock})`);
           items.push({
             product_id: e.product.id,
-            name: e.product.name,
+            name: itemName,
             quantity: stock,
             price: unitPrice,
             valid: true,
@@ -291,7 +297,7 @@ class NLPService {
         } else {
           items.push({
             product_id: e.product.id,
-            name: e.product.name,
+            name: itemName,
             quantity: e.quantity,
             price: unitPrice,
             valid: true,
@@ -811,16 +817,18 @@ class NLPService {
 
     for (const item of existing) {
       if (item.product_id) {
-        map.set(item.product_id, { ...item });
+        const key = item.variant_id ? `${item.product_id}_${item.variant_id}` : item.product_id;
+        map.set(key, { ...item });
       }
     }
 
     for (const item of newItems) {
-      const existing_item = map.get(item.product_id);
+      const key = item.variant_id ? `${item.product_id}_${item.variant_id}` : item.product_id;
+      const existing_item = map.get(key);
       if (existing_item) {
         existing_item.quantity += item.quantity;
       } else {
-        map.set(item.product_id, { ...item });
+        map.set(key, { ...item });
       }
     }
 
@@ -835,7 +843,7 @@ class NLPService {
       lines.push(`• ${item.quantity}x ${item.name} - R$ ${item.total.toFixed(2)}`);
     }
 
-    const deliveryFee = settingsAgent.getDeliveryFee();
+    const deliveryFee = settingsAgent.calculateTimeBasedDeliveryFee();
     const minOrder = settingsAgent.getMinOrder();
 
     lines.push(`\n💰 Subtotal: R$ ${subtotal.toFixed(2)}`);

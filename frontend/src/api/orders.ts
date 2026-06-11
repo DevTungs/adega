@@ -24,4 +24,10 @@ export const ordersApi = {
 
   getStats: (dateFrom?: string, dateTo?: string) =>
     api.get('/reports/dashboard', { params: { date_from: dateFrom, date_to: dateTo } }),
+
+  confirmPix: (phone: string) =>
+    api.post('/orders/confirm-pix', { phone }),
+
+  rejectPix: (phone: string) =>
+    api.post('/orders/reject-pix', { phone }),
 };

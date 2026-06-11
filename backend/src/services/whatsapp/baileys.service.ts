@@ -6,8 +6,12 @@ import QRCode from 'qrcode';
 import { logger } from '../../shared/middlewares/logger';
 import { config } from '../../config/app.config';
 import { whatsappHandler } from '../../modules/whatsapp/whatsapp.handler';
-import { emitWAQR, emitWAStatus, emitWAMessage } from '../websocket/ws.server';
+import { messageFormatter } from '../../modules/whatsapp/whatsapp.formatter';
+import { emitWAQR, emitWAStatus, emitWAMessage, emitPixPending } from '../websocket/ws.server';
 import { customersModel } from '../../modules/customers/customers.model';
+import { whatsappSessionService } from '../../modules/whatsapp/whatsapp.service';
+import { settingsAgent } from '../settings/settings.service';
+import { normalizePhone } from '../../shared/utils/phone';
 
 const SESSION_PATH = path.resolve(__dirname, '../../../../', config.waSessionPath);
 
@@ -35,6 +39,8 @@ let _Browsers: any = null;
 let _proto: any = null;
 let _generateWAMessageFromContent: any = null;
 let _isJidGroup: any = null;
+let _downloadMediaMessage: any = null;
+let _downloadContentFromMessage: any = null;
 
 async function loadBaileys() {
   if (!_bMod) {
@@ -46,6 +52,8 @@ async function loadBaileys() {
     _proto = _bMod.proto;
     _generateWAMessageFromContent = _bMod.generateWAMessageFromContent;
     _isJidGroup = _bMod.isJidGroup;
+    _downloadMediaMessage = _bMod.downloadMediaMessage;
+    _downloadContentFromMessage = _bMod.downloadContentFromMessage;
   }
 }
 
@@ -322,6 +330,63 @@ class BaileysService {
 
           const messageText = this.extractMessageText(msg);
           logger.info({ remoteJid, messageText, msgType: Object.keys(msg.message || {}).join(',') }, 'RAW message');
+
+          // Handle image-only messages as PIX proof when in awaiting_pix_confirmation state
+          if (!messageText && msg.message?.imageMessage) {
+            const pixResolvedJid = (msg.key as any).remoteJidAlt || remoteJid;
+            let pixPhone = pixResolvedJid.replace('@s.whatsapp.net', '').replace('@lid', '');
+            const pixWhatsappJid = remoteJid;
+            this.jidMap.set(pixPhone, pixWhatsappJid);
+
+            const pixNormalized = normalizePhone(pixPhone);
+            const pixSession = await whatsappSessionService.getOrCreate(pixNormalized);
+
+            if (pixSession.state === 'awaiting_pix_confirmation') {
+              try {
+                const buffer = await _downloadMediaMessage(msg, 'buffer', {}, {
+                  downloadContent: _downloadContentFromMessage,
+                });
+                const base64 = buffer.toString('base64');
+                const mimeType = msg.message.imageMessage.mimetype || 'image/jpeg';
+                const dataUrl = `data:${mimeType};base64,${base64}`;
+                logger.info({ phone: pixNormalized, imageLength: dataUrl.length, base64Length: base64.length }, 'PIX image downloaded successfully');
+
+                this.storeMessage(pixNormalized, '📷 Comprovante enviado', 'in');
+                const pixCustomer = customersModel.findByPhone(pixNormalized);
+                const pixSenderName = (msg as any).pushName || '';
+                const pixDisplayName = pixCustomer?.name || pixSenderName;
+                if (pixDisplayName) this.contactNames.set(pixNormalized, pixDisplayName);
+                emitWAMessage(pixNormalized, '📷 Comprovante enviado', 'in', pixDisplayName);
+
+                const pixContext = JSON.parse(pixSession.context || '{}');
+                const pixItems = (pixContext.items || []);
+                const pixSubtotal = pixItems.reduce((s: number, i: any) => s + (i.price || 0) * (i.quantity || 0), 0);
+                const pixDeliveryFee = settingsAgent.calculateTimeBasedDeliveryFee();
+                const pixTotal = pixSubtotal + pixDeliveryFee;
+                const pixKey = settingsAgent.getPixKey();
+                logger.info({ phone: pixNormalized, imageLength: dataUrl.length, total: pixTotal }, 'Emitting PIX pending with image');
+                emitPixPending({
+                  phone: pixNormalized,
+                  customerName: pixContext.customerName || 'Cliente',
+                  total: pixTotal,
+                  imageBase64: dataUrl,
+                  items: pixItems.map((i: any) => ({ name: i.name || i.productName || 'Item', quantity: i.quantity || 1, price: i.price || 0 })),
+                  address: pixContext.address || '',
+                  notes: pixContext.notes || '',
+                  deliveryFee: pixDeliveryFee,
+                });
+
+                await this.sendButtons(pixNormalized,
+                  messageFormatter.pixPending(pixKey, pixTotal),
+                  [{ id: 'cancelar', text: '❌ Cancelar pedido' }],
+                );
+              } catch (downloadErr: any) {
+                logger.error({ error: downloadErr.message, phone: pixPhone }, 'Failed to download PIX proof image');
+              }
+              continue;
+            }
+          }
+
           if (!messageText) continue;
 
           const resolvedJid = (msg.key as any).remoteJidAlt || remoteJid;

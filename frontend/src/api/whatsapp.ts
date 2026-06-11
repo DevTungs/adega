@@ -8,4 +8,5 @@ export const whatsappApi = {
   sendMessage: (phone: string, message: string) => api.post('/whatsapp/send', { phone, message }),
   getConversations: () => api.get('/whatsapp/conversations'),
   getMessages: (phone: string) => api.get(`/whatsapp/messages/${encodeURIComponent(phone)}`),
+  closeAgent: (phone: string) => api.post('/whatsapp/close-agent', { phone }),
 };

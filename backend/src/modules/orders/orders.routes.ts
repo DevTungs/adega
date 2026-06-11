@@ -197,19 +197,23 @@ export async function registerOrderRoutes(app: FastifyInstance) {
           modifiers: item.modifiers || undefined,
         }));
 
-        const deliveryFee = settingsAgent.getDeliveryFee();
+        const deliveryFee = settingsAgent.calculateTimeBasedDeliveryFee();
         const result = await ordersService.create({
           customer_id: customer.id,
           items,
           payment_method: 'pix',
           delivery_address: context.address || '',
           notes: context.notes || undefined,
+          order_type: 'delivery',
         });
 
         const { order, stockWarnings } = result as any;
 
+        // Advance status to confirmed
+        const confirmedOrder = await ordersService.updateStatus(order.id, 'confirmed', 'system', 'Pagamento PIX confirmado pelo admin');
+
         // Notify customer
-        const msg = messageFormatter.pixConfirmed(order.order_number);
+        const msg = `✅ *Pedido #${confirmedOrder.order_number} confirmado!* Estamos preparando. 🍕`;
         try { await baileysService.sendMessage(phone, msg); } catch (e: any) { logger.error({ error: e?.message }, 'Failed to send PIX confirm notification'); }
 
         // Reset session, keeping lastOrder for status tracking
