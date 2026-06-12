@@ -146,27 +146,23 @@ class NLPService {
         const modifiersTotal = (halfAndHalf.modifiers || []).reduce((s, m) => s + m.price_add, 0);
         const displayPrice = price + modifiersTotal;
 
+        const needsVariantSelection = !halfAndHalf.variant_id && product?.variants && product.variants.length > 0;
         const item: ParsedItem = {
           product_id: product?.id || halfAndHalf.halves[0].product_id,
           name: halfAndHalf.message,
           quantity: 1,
           price: displayPrice,
-          valid: true,
+          valid: !needsVariantSelection,
           variant_id: halfAndHalf.variant_id,
           halves: halfAndHalf.halves,
           modifiers: halfAndHalf.modifiers,
         };
 
-        // If variant not specified, return asking for size
-        if (!halfAndHalf.variant_id && product?.variants && product.variants.length > 0) {
-          const varOptions = product.variants
-            .filter((v: any) => v.is_active)
-            .map((v: any) => `• ${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`)
-            .join('\n');
+        if (needsVariantSelection) {
           return {
             intent: 'novo_pedido',
             products: [item],
-            message: `Qual tamanho para ${halfAndHalf.halves.map(h => h.name).join(' + ')}?\n${varOptions}`,
+            message: '',
             needs_confirmation: false,
             confidence: 0.9,
             suggestions: product.variants.map((v: any) => v.name),
@@ -265,6 +261,12 @@ class NLPService {
           continue;
         }
 
+        const requiredMods = (e.product.modifiers || []).filter((m: any) => m.type === 'required');
+        if (requiredMods.length > 0 && (!e.modifiers || e.modifiers.length === 0)) {
+          needsVariant.push(e);
+          continue;
+        }
+
         // Determine price: variant price > product price > extracted price
         let unitPrice = e.price ?? (e.product.promo_price || e.product.price);
         let itemName = e.product.name;
@@ -276,9 +278,14 @@ class NLPService {
             itemName = `${e.product.name} ${v.name}`;
           }
         }
-        
+
         const modifiersTotal = (e.modifiers || []).reduce((s, m) => s + m.price_add, 0);
         unitPrice += modifiersTotal;
+
+        if (e.modifiers && e.modifiers.length > 0) {
+          const flavorNames = e.modifiers.map(m => m.option_name).join(', ');
+          itemName = `${itemName} - ${flavorNames}`;
+        }
 
         const stock = e.product.stock ?? 999;
         if (stock <= 0) {
@@ -310,6 +317,11 @@ class NLPService {
       // If any products need variant selection, ask
       if (needsVariant.length > 0) {
         const varList = needsVariant.map(e => {
+          if (e.variant_id) {
+            const v = e.product.variants?.find((v: any) => v.id === e.variant_id);
+            const vName = v ? v.name : '';
+            return `*${e.product.name} ${vName}* - escolha o sabor:`;
+          }
           const options = e.product.variants
             .filter((v: any) => v.is_active)
             .map((v: any) => `• ${v.name} - R$ ${(v.promo_price || v.price).toFixed(2)}`)
@@ -317,20 +329,36 @@ class NLPService {
           return `*${e.product.name}* tem opções:\n${options}`;
         }).join('\n\n');
 
-        // Include the pending product info so the WhatsApp handler can transition to awaiting_variant
         const pendingProducts = needsVariant.map(e => ({
           product_id: e.product.id,
           name: e.product.name,
           quantity: e.quantity,
           price: e.price ?? (e.product.promo_price || e.product.price),
           valid: false,
+          variant_id: e.variant_id,
           modifiers: e.modifiers,
         }));
 
+        const readyProducts = items.map(i => ({
+          product_id: i.product_id,
+          name: i.name,
+          quantity: i.quantity,
+          price: i.price,
+          valid: true,
+          variant_id: i.variant_id,
+          modifiers: i.modifiers,
+        }));
+
+        let message = varList;
+        if (readyProducts.length > 0) {
+          const readyList = readyProducts.map(i => `• ${i.quantity}x ${i.name}`).join('\n');
+          message = `Já anotei:\n${readyList}\n\n${varList}`;
+        }
+
         return {
           intent: 'novo_pedido',
-          products: pendingProducts,
-          message: `${varList}\n\nQual tamanho deseja?`,
+          products: [...pendingProducts, ...readyProducts],
+          message,
           needs_confirmation: false,
           confidence: 0.8,
           suggestions: needsVariant.map((e: any) => e.product.name),
@@ -579,6 +607,7 @@ class NLPService {
           quantity,
           alias: variantAlias,
           variant_id: data.variant.id,
+          modifiers: this.extractModifiers(message, data.product.id),
         });
 
         consumedRanges.push([idx, rangeEnd]);
@@ -692,8 +721,7 @@ class NLPService {
       if (directMatches.length >= 1) {
         directMatches.sort((a: any, b: any) => this.normalize(a.name).length - this.normalize(b.name).length);
         const best = directMatches[0];
-        const before = message.substring(0, segIdx >= 0 ? segIdx : 0).trim();
-        const quantity = this.extractQuantity(before);
+        const quantity = this.extractQuantityFromSegment(segTrimmed);
 
         if (segIdx >= 0) consumedRanges.push([segIdx, segEnd]);
         results.push({ product: best, quantity, alias: segName });
@@ -789,6 +817,19 @@ class NLPService {
     }
 
     return results;
+  }
+
+  private extractQuantityFromSegment(segment: string): number {
+    const xMatch = segment.match(/(\d+)\s*x/i);
+    if (xMatch) return parseInt(xMatch[1]);
+
+    const numWordMatch = segment.match(/\b(um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez)\b/i);
+    if (numWordMatch && NUMBER_WORDS[numWordMatch[1].toLowerCase()]) return NUMBER_WORDS[numWordMatch[1].toLowerCase()];
+
+    const numMatch = segment.match(/(\d+)/);
+    if (numMatch) return parseInt(numMatch[1]);
+
+    return 1;
   }
 
   private extractQuantity(before: string): number {
