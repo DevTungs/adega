@@ -1,6 +1,6 @@
 {
   "name": "painel-delivery",
-  "version": "1.0.46",
+  "version": "1.0.47",
   "description": "Sistema de Delivery - Painel Administrativo",
   "main": "electron/main.js",
   "author": "Painel Delivery",

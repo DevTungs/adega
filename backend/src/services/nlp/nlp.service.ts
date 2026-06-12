@@ -67,7 +67,13 @@ class NLPService {
       const rows = db.all('SELECT pa.alias, p.name FROM product_aliases pa JOIN products p ON p.id = pa.product_id');
       this.dbAliases = {};
       for (const row of rows) {
-        this.dbAliases[this.normalize(row.alias)] = row.name;
+        const normalized = this.normalize(row.alias);
+        this.dbAliases[normalized] = row.name;
+        if (normalized.endsWith('s') && normalized.length > 3) {
+          this.dbAliases[normalized.slice(0, -1)] = row.name;
+        } else if (!normalized.endsWith('s') && normalized.length > 2) {
+          this.dbAliases[normalized + 's'] = row.name;
+        }
       }
     } catch { /* ignore */ }
 
