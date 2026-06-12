@@ -216,7 +216,8 @@ export class WhatsAppHandler {
           // Check if products need variant selection (valid: false)
           const pendingVariant = response.products.find((p: any) => p.valid === false) as any;
           if (pendingVariant) {
-            return this.processPendingVariant(phone, pendingVariant, response.products, session, message);
+            const context = JSON.parse(session.context || '{}');
+            return this.processPendingVariant(phone, pendingVariant, response.products, session, message, context.items || []);
           }
 
           // Response has products — save to session

@@ -191,7 +191,7 @@ export class OrdersService {
       logger.info({ customerPhone: phoneToSend, whatsappJid: order.whatsapp_jid, orderId: id, orderNumber: order.order_number }, '[WA] Attempting notification');
       if (phoneToSend) {
         const statusMessages: Record<string, string> = {
-          confirmed: `✅ Pedido #${order.order_number} confirmado! Estamos preparando.`,
+          confirmed: `✅ Pedido #${order.order_number} recebido! Estamos preparando.`,
           preparing: `🍳 Pedido #${order.order_number} em preparação!`,
           ready: `📦 Pedido #${order.order_number} pronto! Será enviado em breve.`,
           out_for_delivery: `🚚 Pedido #${order.order_number} saiu para entrega!`,

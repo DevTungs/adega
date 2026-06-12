@@ -142,7 +142,7 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       const { id } = request.params as { id: string };
       const { reason } = request.body as { reason?: string };
       const user = getUser(request);
-      const order = await ordersService.cancel(id, reason || 'Cancelado pelo admin', user.username);
+      const order = await ordersService.cancel(id, reason || 'Infelizmente não conseguimos concluir o pedido', user.username);
       reply.send({ success: true, data: order });
     },
   });
@@ -210,10 +210,10 @@ export async function registerOrderRoutes(app: FastifyInstance) {
         const { order, stockWarnings } = result as any;
 
         // Advance status to confirmed
-        const confirmedOrder = await ordersService.updateStatus(order.id, 'confirmed', 'system', 'Pagamento PIX confirmado pelo admin');
+        const confirmedOrder = await ordersService.updateStatus(order.id, 'confirmed', 'system', 'Pagamento PIX confirmado.');
 
         // Notify customer
-        const msg = `✅ *Pedido #${confirmedOrder.order_number} confirmado!* Estamos preparando. 🍕`;
+        const msg = `✅ *Pagamento #${confirmedOrder.order_number} Confirmado!*`;
         try { await baileysService.sendMessage(phone, msg); } catch (e: any) { logger.error({ error: e?.message }, 'Failed to send PIX confirm notification'); }
 
         // Reset session, keeping lastOrder for status tracking

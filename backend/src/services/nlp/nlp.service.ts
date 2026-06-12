@@ -186,7 +186,7 @@ class NLPService {
     }
 
     // 2. Extract products from the message
-    const extracted = this.extractProducts(normalized);
+    const extracted = this.extractProducts(normalized, message);
 
     // 3. If we found products, it's an order
     if (extracted.length > 0) {
@@ -570,7 +570,7 @@ class NLPService {
     return null;
   }
 
-  private extractProducts(message: string): Array<{ product: any; quantity: number; alias: string; ambiguous?: boolean; options?: any[]; variant_id?: string; modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>; price?: number }> {
+  private extractProducts(message: string, rawMessage?: string): Array<{ product: any; quantity: number; alias: string; ambiguous?: boolean; options?: any[]; variant_id?: string; modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>; price?: number }> {
     const results: Array<{ product: any; quantity: number; alias: string; ambiguous?: boolean; options?: any[]; variant_id?: string; modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>; price?: number }> = [];
     const consumedRanges: Array<[number, number]> = [];
 
@@ -686,11 +686,13 @@ class NLPService {
     }
 
     // 3. Direct product name matching on each unconsumed segment
-    // Always runs — splits on "e", "&", "," to support multiple products
-    const separatorPattern = /\s+(?:e|&|,)\s+/;
-    const segments = message.split(separatorPattern);
+    // Use rawMessage (with commas intact) for splitting, fall back to normalized message
+    const splitSource = rawMessage || message;
+    const separatorPattern = /\s*[,;&]\s*|\s+(?:e|&)\s+/g;
+    const segments = splitSource.split(separatorPattern).filter(Boolean);
 
-    for (const segment of segments) {
+    for (const rawSegment of segments) {
+      const segment = this.normalize(rawSegment);
       const segTrimmed = segment.trim();
       if (!segTrimmed || segTrimmed.length < 2) continue;
 
