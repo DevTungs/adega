@@ -987,10 +987,13 @@ export class WhatsAppHandler {
     if (pendingVariant.modifiers) pendingItemData.modifiers = pendingVariant.modifiers;
 
     const context = JSON.parse(session.context || '{}');
-    const otherItems = existingItems || allProducts.filter((p: any) => p.valid !== false).map((p: any) => ({
-      product_id: p.product_id, name: p.name, quantity: p.quantity, price: p.price,
-      variant_id: p.variant_id, halves: p.halves, modifiers: p.modifiers,
-    }));
+    const currentValidProducts = allProducts
+      .filter((p: any) => p.valid !== false)
+      .map((p: any) => ({
+        product_id: p.product_id, name: p.name, quantity: p.quantity, price: p.price,
+        variant_id: p.variant_id, halves: p.halves, modifiers: p.modifiers,
+      }));
+    const otherItems = this.mergeItemsLocal(existingItems || [], currentValidProducts);
 
     const historyEntries = [
       ...(context.history || []).slice(-4),
