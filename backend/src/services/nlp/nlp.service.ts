@@ -75,7 +75,6 @@ class NLPService {
           this.dbAliases[normalized + 's'] = row.name;
         }
       }
-      logger.info({ aliasesCount: Object.keys(this.dbAliases).length, aliases: Object.keys(this.dbAliases).slice(0, 20) }, '[NLP] DB Aliases loaded');
     } catch { /* ignore */ }
 
     // Build category suggestions from catalog
@@ -837,7 +836,6 @@ class NLPService {
       }
     }
 
-    logger.info({ resultsCount: results.length, results: results.map((r: any) => ({ name: r.product.name, quantity: r.quantity, alias: r.alias })) }, '[NLP] Extracted products');
     return results;
   }
 
