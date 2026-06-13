@@ -605,6 +605,7 @@ export class WhatsAppHandler {
     const context = JSON.parse(session.context || '{}');
     const pendingItem = context.pendingItem;
     const modIndex = context.pendingModifierIndex ?? 0;
+    logger.info({ contextItems: context.items?.length, pendingItem: pendingItem?.name }, '[handleModifierInput] State');
 
     if (!pendingItem || !pendingItem.product) {
       await whatsappSessionService.updateState(phone, 'awaiting_items', {});
@@ -763,6 +764,7 @@ export class WhatsAppHandler {
     }
 
     const items = context.items || [];
+    logger.info({ itemsBeforePush: items.length, pendingItem: pendingItem?.name }, '[handleModifierInput] Final order');
     items.push(pendingItem);
     context.items = items;
     delete context.pendingItem;
@@ -994,6 +996,7 @@ export class WhatsAppHandler {
         variant_id: p.variant_id, halves: p.halves, modifiers: p.modifiers,
       }));
     const otherItems = this.mergeItemsLocal(existingItems || [], currentValidProducts);
+    logger.info({ existingItems: existingItems?.length, currentValidProducts: currentValidProducts.length, otherItems: otherItems.length }, '[processPendingVariant] Items preserved');
 
     const historyEntries = [
       ...(context.history || []).slice(-4),

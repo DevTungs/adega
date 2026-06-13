@@ -75,6 +75,7 @@ class NLPService {
           this.dbAliases[normalized + 's'] = row.name;
         }
       }
+      logger.info({ aliasesCount: Object.keys(this.dbAliases).length, aliases: Object.keys(this.dbAliases).slice(0, 20) }, '[NLP] DB Aliases loaded');
     } catch { /* ignore */ }
 
     // Build category suggestions from catalog
@@ -702,8 +703,10 @@ class NLPService {
       const segTrimmed = segment.trim();
       if (!segTrimmed || segTrimmed.length < 2) continue;
 
+      // Strip common verbs: "quero", "quero 2", etc.
+      let segName = segTrimmed.replace(/^quero\s+/i, '').trim();
       // Strip leading number: "2 red bull", "2x red bull"
-      let segName = segTrimmed.replace(/^\d+\s*x?\s*/, '').trim();
+      segName = segName.replace(/^\d+\s*x?\s*/, '').trim();
       // Strip number words: "um", "dois", "tres" ...
       const nwMatch = segName.match(/^(um|uma|dois|duas|tres|três|quatro|cinco|seis|sete|oito|nove|dez)\s+/);
       if (nwMatch) segName = segName.substring(nwMatch[0].length).trim();
@@ -720,11 +723,21 @@ class NLPService {
       }
 
       // Find matching product (that hasn't been matched yet)
-      const directMatches = this.allProducts.filter((p: any) => {
+      let directMatches = this.allProducts.filter((p: any) => {
         if (matchedProductIds.has(p.id)) return false;
         const nameNorm = this.normalize(p.name);
         return nameNorm.includes(segName) || segName.includes(nameNorm);
       });
+
+      // Try singular form if no match (e.g., "bacardis" → "bacardi")
+      if (directMatches.length === 0 && segName.endsWith('s') && segName.length > 3) {
+        const singular = segName.slice(0, -1);
+        directMatches = this.allProducts.filter((p: any) => {
+          if (matchedProductIds.has(p.id)) return false;
+          const nameNorm = this.normalize(p.name);
+          return nameNorm.includes(singular) || singular.includes(nameNorm);
+        });
+      }
 
       if (directMatches.length >= 1) {
         directMatches.sort((a: any, b: any) => this.normalize(a.name).length - this.normalize(b.name).length);
@@ -824,6 +837,7 @@ class NLPService {
       }
     }
 
+    logger.info({ resultsCount: results.length, results: results.map((r: any) => ({ name: r.product.name, quantity: r.quantity, alias: r.alias })) }, '[NLP] Extracted products');
     return results;
   }
 

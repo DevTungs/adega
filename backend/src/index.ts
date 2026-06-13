@@ -27,17 +27,17 @@ export async function start() {
 
   logger.info('[DB] Database ready');
 
-  // Reset all agent_active sessions on startup (bot was paused, resume it)
+  // Reset all WhatsApp sessions on startup (bot was paused, resume fresh)
   try {
     const { qb } = await import('./config/database');
     qb.update('whatsapp_sessions', {
       state: 'idle',
       context: '{}',
       updated_at: new Date().toISOString(),
-    }, "state = 'agent_active'");
-    logger.info('[DB] Reset all agent_active sessions to idle');
+    }, '1=1');
+    logger.info('[DB] Reset all WhatsApp sessions to idle');
   } catch (err: any) {
-    logger.error({ error: err.message }, 'Failed to reset agent_active sessions');
+    logger.error({ error: err.message }, 'Failed to reset WhatsApp sessions');
   }
 
   // Build and start app
