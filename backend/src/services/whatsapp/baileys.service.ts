@@ -331,8 +331,11 @@ class BaileysService {
           const messageText = this.extractMessageText(msg);
           logger.info({ remoteJid, messageText, msgType: Object.keys(msg.message || {}).join(',') }, 'RAW message');
 
-          // Handle image-only messages as PIX proof when in awaiting_pix_confirmation state
-          if (!messageText && msg.message?.imageMessage) {
+          // Handle image or PDF messages as PIX proof when in awaiting_pix_confirmation state
+          const isImage = !messageText && msg.message?.imageMessage;
+          const isPdf = !messageText && msg.message?.documentMessage?.mimetype === 'application/pdf';
+
+          if (isImage || isPdf) {
             const pixResolvedJid = (msg.key as any).remoteJidAlt || remoteJid;
             let pixPhone = pixResolvedJid.replace('@s.whatsapp.net', '').replace('@lid', '');
             const pixWhatsappJid = remoteJid;
@@ -347,16 +350,19 @@ class BaileysService {
                   downloadContent: _downloadContentFromMessage,
                 });
                 const base64 = buffer.toString('base64');
-                const mimeType = msg.message.imageMessage.mimetype || 'image/jpeg';
+                const mimeType = isPdf
+                  ? 'application/pdf'
+                  : (msg.message.imageMessage?.mimetype || 'image/jpeg');
                 const dataUrl = `data:${mimeType};base64,${base64}`;
-                logger.info({ phone: pixNormalized, imageLength: dataUrl.length, base64Length: base64.length }, 'PIX image downloaded successfully');
+                const docType = isPdf ? 'PDF' : 'image';
+                logger.info({ phone: pixNormalized, type: docType, length: dataUrl.length }, 'PIX proof downloaded');
 
-                this.storeMessage(pixNormalized, '📷 Comprovante enviado', 'in');
+                this.storeMessage(pixNormalized, isPdf ? '📄 Comprovante (PDF) enviado' : '📷 Comprovante enviado', 'in');
                 const pixCustomer = customersModel.findByPhone(pixNormalized);
                 const pixSenderName = (msg as any).pushName || '';
                 const pixDisplayName = pixCustomer?.name || pixSenderName;
                 if (pixDisplayName) this.contactNames.set(pixNormalized, pixDisplayName);
-                emitWAMessage(pixNormalized, '📷 Comprovante enviado', 'in', pixDisplayName);
+                emitWAMessage(pixNormalized, isPdf ? '📄 Comprovante (PDF) enviado' : '📷 Comprovante enviado', 'in', pixDisplayName);
 
                 const pixContext = JSON.parse(pixSession.context || '{}');
                 const pixItems = (pixContext.items || []);
@@ -364,7 +370,7 @@ class BaileysService {
                 const pixDeliveryFee = settingsAgent.calculateTimeBasedDeliveryFee();
                 const pixTotal = pixSubtotal + pixDeliveryFee;
                 const pixKey = settingsAgent.getPixKey();
-                logger.info({ phone: pixNormalized, imageLength: dataUrl.length, total: pixTotal }, 'Emitting PIX pending with image');
+                logger.info({ phone: pixNormalized, type: docType, total: pixTotal }, 'Emitting PIX pending');
                 emitPixPending({
                   phone: pixNormalized,
                   customerName: pixContext.customerName || 'Cliente',
@@ -381,7 +387,7 @@ class BaileysService {
                   [{ id: 'cancelar', text: '❌ Cancelar pedido' }],
                 );
               } catch (downloadErr: any) {
-                logger.error({ error: downloadErr.message, phone: pixPhone }, 'Failed to download PIX proof image');
+                logger.error({ error: downloadErr.message, phone: pixPhone }, 'Failed to download PIX proof');
               }
               continue;
             }
