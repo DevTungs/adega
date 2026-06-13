@@ -1,16 +1,16 @@
 import api from './client';
 
 export const reportsApi = {
-  getSales: (params?: { period?: string; date_from?: string; date_to?: string }) =>
+  getSales: (params?: { period?: string; date_from?: string; date_to?: string; order_type?: string }) =>
     api.get('/reports/sales', { params }),
 
-  getTopProducts: (params?: { limit?: number; sort?: string; date_from?: string; date_to?: string }) =>
+  getTopProducts: (params?: { limit?: number; sort?: string; date_from?: string; date_to?: string; order_type?: string }) =>
     api.get('/reports/products/top', { params }),
 
-  getCategories: (params?: { date_from?: string; date_to?: string }) =>
+  getCategories: (params?: { date_from?: string; date_to?: string; order_type?: string }) =>
     api.get('/reports/categories', { params }),
 
-  getTopCustomers: (params?: { limit?: number }) =>
+  getTopCustomers: (params?: { limit?: number; order_type?: string }) =>
     api.get('/reports/customers/top', { params }),
 
   getInventoryValuation: () =>
@@ -22,12 +22,12 @@ export const reportsApi = {
   getInventoryByCategory: () =>
     api.get('/reports/inventory/by-category'),
 
-  getProfit: (params?: { date_from?: string; date_to?: string }) =>
+  getProfit: (params?: { date_from?: string; date_to?: string; order_type?: string }) =>
     api.get('/reports/profit', { params }),
 
-  getHours: (params?: { date_from?: string; date_to?: string }) =>
+  getHours: (params?: { date_from?: string; date_to?: string; order_type?: string }) =>
     api.get('/reports/hours', { params }),
 
-  getComparison: (params?: { date_from?: string; date_to?: string }) =>
+  getComparison: (params?: { date_from?: string; date_to?: string; order_type?: string }) =>
     api.get('/reports/comparison', { params }),
 };

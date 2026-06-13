@@ -88,7 +88,7 @@ export default function OrderTable({ orders, orderType, onStatusChange, onViewDe
               <td className="px-4 py-3 font-medium text-primary-600">#{order.order_number}</td>
               <td className="px-4 py-3">
                 <div className="font-medium text-white">{order.customer_name || 'N/A'}</div>
-                <div className="text-sm text-gray-500">{order.customer_phone}</div>
+                {!isPDV && <div className="text-sm text-gray-500">{order.customer_phone}</div>}
               </td>
               <td className="px-4 py-3 text-sm text-gray-400">
                 {order.items?.length || 0} {order.items?.length === 1 ? 'item' : 'itens'}

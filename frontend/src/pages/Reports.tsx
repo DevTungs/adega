@@ -4,6 +4,7 @@ import { formatCurrency, formatDate, PAYMENT_LABELS } from '../utils/format';
 import { BarChart3, Package, Users, Clock, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 type Tab = 'sales' | 'inventory' | 'customers' | 'hours';
+type OrderTypeFilter = '' | 'delivery' | 'pdv';
 
 interface SalesSummary {
   totalOrders: number;
@@ -141,6 +142,7 @@ export default function Reports() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [period, setPeriod] = useState('day');
+  const [orderType, setOrderType] = useState<OrderTypeFilter>('');
   const [loading, setLoading] = useState(false);
 
   // Sales state
@@ -175,7 +177,7 @@ export default function Reports() {
     }
   };
 
-  const dateParams = { date_from: dateFrom || undefined, date_to: dateTo || undefined };
+  const dateParams = { date_from: dateFrom || undefined, date_to: dateTo || undefined, order_type: orderType || undefined };
 
   const loadSales = useCallback(async () => {
     setLoading(true);
@@ -196,7 +198,7 @@ export default function Reports() {
       setComparison(compRes.data.data);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [dateFrom, dateTo, period]);
+  }, [dateFrom, dateTo, period, orderType]);
 
   const loadInventory = useCallback(async () => {
     setLoading(true);
@@ -216,11 +218,11 @@ export default function Reports() {
   const loadCustomers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await reportsApi.getTopCustomers({ limit: 20 });
+      const res = await reportsApi.getTopCustomers({ limit: 20, order_type: orderType || undefined });
       setTopCustomers(res.data.data);
     } catch { /* ignore */ }
     setLoading(false);
-  }, []);
+  }, [orderType]);
 
   const loadHours = useCallback(async () => {
     setLoading(true);
@@ -229,7 +231,7 @@ export default function Reports() {
       setHours(res.data.data);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, orderType]);
 
   useEffect(() => {
     if (activeTab === 'sales') loadSales();
@@ -274,6 +276,14 @@ export default function Reports() {
         <div className="card">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-400">Tipo:</label>
+              <select value={orderType} onChange={(e) => setOrderType(e.target.value as OrderTypeFilter)} className="input !w-auto">
+                <option value="">Todos</option>
+                <option value="delivery">Delivery</option>
+                <option value="pdv">Balcão</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
               <label className="text-sm text-gray-400">De:</label>
               <input
                 type="date"
@@ -308,6 +318,22 @@ export default function Reports() {
                 </select>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Order type filter for customers tab */}
+      {activeTab === 'customers' && (
+        <div className="card">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-400">Tipo:</label>
+              <select value={orderType} onChange={(e) => setOrderType(e.target.value as OrderTypeFilter)} className="input !w-auto">
+                <option value="">Todos</option>
+                <option value="delivery">Delivery</option>
+                <option value="pdv">Balcão</option>
+              </select>
+            </div>
           </div>
         </div>
       )}

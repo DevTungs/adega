@@ -1,13 +1,14 @@
 import { getDb } from '../../config/database';
 
 export class ReportsModel {
-  getSalesSummary(filters: { date_from?: string; date_to?: string }) {
+  getSalesSummary(filters: { date_from?: string; date_to?: string; order_type?: string }) {
     const db = getDb();
     const conditions = ["status != 'cancelled'"];
     const params: any[] = [];
 
     if (filters.date_from) { conditions.push('created_at >= ?'); params.push(filters.date_from); }
     if (filters.date_to) { conditions.push('created_at <= ?'); params.push(filters.date_to); }
+    if (filters.order_type) { conditions.push('order_type = ?'); params.push(filters.order_type); }
 
     const where = conditions.join(' AND ');
     const row = db.get(
@@ -17,13 +18,14 @@ export class ReportsModel {
     return row;
   }
 
-  getSalesByPeriod(period: string, filters: { date_from?: string; date_to?: string }) {
+  getSalesByPeriod(period: string, filters: { date_from?: string; date_to?: string; order_type?: string }) {
     const db = getDb();
     const conditions = ["status != 'cancelled'"];
     const params: any[] = [];
 
     if (filters.date_from) { conditions.push('created_at >= ?'); params.push(filters.date_from); }
     if (filters.date_to) { conditions.push('created_at <= ?'); params.push(filters.date_to); }
+    if (filters.order_type) { conditions.push('order_type = ?'); params.push(filters.order_type); }
 
     const groupExpr: Record<string, string> = {
       day: "strftime('%Y-%m-%d', created_at)",
@@ -41,13 +43,14 @@ export class ReportsModel {
     );
   }
 
-  getSalesByPaymentMethod(filters: { date_from?: string; date_to?: string }) {
+  getSalesByPaymentMethod(filters: { date_from?: string; date_to?: string; order_type?: string }) {
     const db = getDb();
     const conditions = ["status != 'cancelled'"];
     const params: any[] = [];
 
     if (filters.date_from) { conditions.push('created_at >= ?'); params.push(filters.date_from); }
     if (filters.date_to) { conditions.push('created_at <= ?'); params.push(filters.date_to); }
+    if (filters.order_type) { conditions.push('order_type = ?'); params.push(filters.order_type); }
 
     const where = conditions.join(' AND ');
     return db.all(
@@ -56,13 +59,14 @@ export class ReportsModel {
     );
   }
 
-  getTopProducts(limit: number, sort: string, filters: { date_from?: string; date_to?: string }) {
+  getTopProducts(limit: number, sort: string, filters: { date_from?: string; date_to?: string; order_type?: string }) {
     const db = getDb();
     const conditions = ["o.status != 'cancelled'"];
     const params: any[] = [];
 
     if (filters.date_from) { conditions.push('o.created_at >= ?'); params.push(filters.date_from); }
     if (filters.date_to) { conditions.push('o.created_at <= ?'); params.push(filters.date_to); }
+    if (filters.order_type) { conditions.push('o.order_type = ?'); params.push(filters.order_type); }
 
     const where = conditions.join(' AND ');
     const orderCol = sort === 'revenue' ? 'revenue' : 'quantity';
@@ -79,13 +83,14 @@ export class ReportsModel {
     );
   }
 
-  getSalesByCategory(filters: { date_from?: string; date_to?: string }) {
+  getSalesByCategory(filters: { date_from?: string; date_to?: string; order_type?: string }) {
     const db = getDb();
     const conditions = ["o.status != 'cancelled'"];
     const params: any[] = [];
 
     if (filters.date_from) { conditions.push('o.created_at >= ?'); params.push(filters.date_from); }
     if (filters.date_to) { conditions.push('o.created_at <= ?'); params.push(filters.date_to); }
+    if (filters.order_type) { conditions.push('o.order_type = ?'); params.push(filters.order_type); }
 
     const where = conditions.join(' AND ');
     return db.all(
@@ -101,15 +106,31 @@ export class ReportsModel {
     );
   }
 
-  getTopCustomers(limit: number) {
+  getTopCustomers(limit: number, orderType?: string) {
     const db = getDb();
+    const conditions = ['total_orders > 0'];
+    const params: any[] = [limit];
+
+    if (orderType) {
+      return db.all(
+        `SELECT c.id, c.name, c.phone, COUNT(o.id) as total_orders, COALESCE(SUM(o.total), 0) as total_spent, MAX(o.created_at) as last_order_at
+         FROM customers c
+         JOIN orders o ON o.customer_id = c.id
+         WHERE o.order_type = ? AND o.status != 'cancelled'
+         GROUP BY c.id, c.name, c.phone
+         ORDER BY total_spent DESC
+         LIMIT ?`,
+        [orderType, limit]
+      );
+    }
+
     return db.all(
       `SELECT id, name, phone, total_orders, total_spent, last_order_at
        FROM customers
-       WHERE total_orders > 0
+       WHERE ${conditions.join(' AND ')}
        ORDER BY total_spent DESC
        LIMIT ?`,
-      [limit]
+      params
     );
   }
 
@@ -143,13 +164,14 @@ export class ReportsModel {
     );
   }
 
-  getProfit(filters: { date_from?: string; date_to?: string }) {
+  getProfit(filters: { date_from?: string; date_to?: string; order_type?: string }) {
     const db = getDb();
     const conditions = ["o.status != 'cancelled'"];
     const params: any[] = [];
 
     if (filters.date_from) { conditions.push('o.created_at >= ?'); params.push(filters.date_from); }
     if (filters.date_to) { conditions.push('o.created_at <= ?'); params.push(filters.date_to); }
+    if (filters.order_type) { conditions.push('o.order_type = ?'); params.push(filters.order_type); }
 
     const where = conditions.join(' AND ');
     return db.get(
@@ -162,13 +184,14 @@ export class ReportsModel {
     );
   }
 
-  getOrdersByHour(filters: { date_from?: string; date_to?: string }) {
+  getOrdersByHour(filters: { date_from?: string; date_to?: string; order_type?: string }) {
     const db = getDb();
     const conditions = ["status != 'cancelled'"];
     const params: any[] = [];
 
     if (filters.date_from) { conditions.push('created_at >= ?'); params.push(filters.date_from); }
     if (filters.date_to) { conditions.push('created_at <= ?'); params.push(filters.date_to); }
+    if (filters.order_type) { conditions.push('order_type = ?'); params.push(filters.order_type); }
 
     const where = conditions.join(' AND ');
     return db.all(
@@ -179,7 +202,7 @@ export class ReportsModel {
     );
   }
 
-  getComparison(filters: { date_from?: string; date_to?: string }) {
+  getComparison(filters: { date_from?: string; date_to?: string; order_type?: string }) {
     if (!filters.date_from || !filters.date_to) return null;
 
     const db = getDb();
@@ -192,14 +215,22 @@ export class ReportsModel {
     const prevTo = new Date(from);
     prevTo.setDate(prevTo.getDate() - 1);
 
+    const orderTypeCondition = filters.order_type ? ' AND order_type = ?' : '';
+    const currentParams = filters.order_type
+      ? [filters.date_from, filters.date_to, filters.order_type]
+      : [filters.date_from, filters.date_to];
+    const previousParams = filters.order_type
+      ? [prevFrom.toISOString(), prevTo.toISOString(), filters.order_type]
+      : [prevFrom.toISOString(), prevTo.toISOString()];
+
     const current = db.get(
-      `SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as revenue FROM orders WHERE status != 'cancelled' AND created_at >= ? AND created_at <= ?`,
-      [filters.date_from, filters.date_to]
+      `SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as revenue FROM orders WHERE status != 'cancelled' AND created_at >= ? AND created_at <= ?${orderTypeCondition}`,
+      currentParams
     );
 
     const previous = db.get(
-      `SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as revenue FROM orders WHERE status != 'cancelled' AND created_at >= ? AND created_at <= ?`,
-      [prevFrom.toISOString(), prevTo.toISOString()]
+      `SELECT COUNT(*) as orders, COALESCE(SUM(total), 0) as revenue FROM orders WHERE status != 'cancelled' AND created_at >= ? AND created_at <= ?${orderTypeCondition}`,
+      previousParams
     );
 
     return { current, previous, daysDiff };

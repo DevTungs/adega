@@ -6,8 +6,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
   app.get('/api/reports/sales', {
     preHandler: [authMiddleware],
     handler: async (request, reply) => {
-      const { period, date_from, date_to } = request.query as any;
-      const filters = { date_from, date_to };
+      const { period, date_from, date_to, order_type } = request.query as any;
+      const filters = { date_from, date_to, order_type };
 
       const [summary, byPeriod, byPayment] = await Promise.all([
         reportsModel.getSalesSummary(filters),
@@ -22,11 +22,11 @@ export async function registerReportRoutes(app: FastifyInstance) {
   app.get('/api/reports/products/top', {
     preHandler: [authMiddleware],
     handler: async (request, reply) => {
-      const { limit, sort, date_from, date_to } = request.query as any;
+      const { limit, sort, date_from, date_to, order_type } = request.query as any;
       const products = reportsModel.getTopProducts(
         parseInt(limit) || 10,
         sort || 'quantity',
-        { date_from, date_to }
+        { date_from, date_to, order_type }
       );
       reply.send({ success: true, data: products });
     },
@@ -35,8 +35,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
   app.get('/api/reports/categories', {
     preHandler: [authMiddleware],
     handler: async (request, reply) => {
-      const { date_from, date_to } = request.query as any;
-      const categories = reportsModel.getSalesByCategory({ date_from, date_to });
+      const { date_from, date_to, order_type } = request.query as any;
+      const categories = reportsModel.getSalesByCategory({ date_from, date_to, order_type });
       reply.send({ success: true, data: categories });
     },
   });
@@ -44,8 +44,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
   app.get('/api/reports/customers/top', {
     preHandler: [authMiddleware],
     handler: async (request, reply) => {
-      const { limit } = request.query as any;
-      const customers = reportsModel.getTopCustomers(parseInt(limit) || 10);
+      const { limit, order_type } = request.query as any;
+      const customers = reportsModel.getTopCustomers(parseInt(limit) || 10, order_type);
       reply.send({ success: true, data: customers });
     },
   });
@@ -77,8 +77,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
   app.get('/api/reports/profit', {
     preHandler: [authMiddleware],
     handler: async (request, reply) => {
-      const { date_from, date_to } = request.query as any;
-      const profit = reportsModel.getProfit({ date_from, date_to });
+      const { date_from, date_to, order_type } = request.query as any;
+      const profit = reportsModel.getProfit({ date_from, date_to, order_type });
       reply.send({ success: true, data: profit });
     },
   });
@@ -86,8 +86,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
   app.get('/api/reports/hours', {
     preHandler: [authMiddleware],
     handler: async (request, reply) => {
-      const { date_from, date_to } = request.query as any;
-      const hours = reportsModel.getOrdersByHour({ date_from, date_to });
+      const { date_from, date_to, order_type } = request.query as any;
+      const hours = reportsModel.getOrdersByHour({ date_from, date_to, order_type });
       reply.send({ success: true, data: hours });
     },
   });
@@ -95,8 +95,8 @@ export async function registerReportRoutes(app: FastifyInstance) {
   app.get('/api/reports/comparison', {
     preHandler: [authMiddleware],
     handler: async (request, reply) => {
-      const { date_from, date_to } = request.query as any;
-      const comparison = reportsModel.getComparison({ date_from, date_to });
+      const { date_from, date_to, order_type } = request.query as any;
+      const comparison = reportsModel.getComparison({ date_from, date_to, order_type });
       reply.send({ success: true, data: comparison });
     },
   });

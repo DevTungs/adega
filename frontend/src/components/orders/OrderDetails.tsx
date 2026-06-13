@@ -109,7 +109,7 @@ export default function OrderDetails({ order, orderType, onClose }: Props) {
           <div>
             <h4 className="font-medium text-gray-300 mb-2">Cliente</h4>
             <p className="text-white">{order.customer_name || 'N/A'}</p>
-            <p className="text-sm text-gray-500">{order.customer_phone}</p>
+            {!isPDV && <p className="text-sm text-gray-500">{order.customer_phone}</p>}
           </div>
 
           {hasSplits && itemsBySplit ? (
