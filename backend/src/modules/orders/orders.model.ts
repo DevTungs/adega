@@ -232,7 +232,7 @@ export class OrdersModel {
       qb.insert('order_items', {
         id: orderItemId,
         order_id: id,
-        product_id: item.product_id,
+        product_id: item.product_id || null,
         product_name: item.product_name,
         quantity: item.quantity,
         unit_price: item.unit_price,

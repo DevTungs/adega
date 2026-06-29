@@ -32,7 +32,9 @@ export class OrdersService {
   async create(data: {
     customer_id: string;
     items: Array<{
-      product_id: string;
+      product_id?: string;
+      product_name?: string;
+      unit_price?: number;
       quantity: number;
       notes?: string;
       variant_id?: string;
@@ -62,6 +64,20 @@ export class OrdersService {
     let subtotal = 0;
 
     for (const item of data.items) {
+      if (!item.product_id) {
+        const customName = item.product_name || 'Item avulso';
+        const customPrice = item.unit_price ?? 0;
+        items.push({
+          product_id: '',
+          product_name: customName,
+          quantity: item.quantity,
+          unit_price: customPrice,
+          notes: item.notes,
+        });
+        subtotal += customPrice * item.quantity;
+        continue;
+      }
+
       const product = await productsModel.findById(item.product_id);
       if (!product) throw AppError.badRequest(`Produto não encontrado: ${item.product_id}`);
       if (product.is_active !== 1) throw AppError.badRequest(`Produto inativo: ${product.name}`);
@@ -130,6 +146,7 @@ export class OrdersService {
 
     // Update stock
     for (const item of items) {
+      if (!item.product_id) continue;
       if (item.variant_id) {
         const variant = await variantsModel.findById(item.variant_id);
         if (variant && variant.stock !== null) {

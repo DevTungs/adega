@@ -2,9 +2,10 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { productsApi, categoriesApi } from '../api/products';
 import { ordersApi } from '../api/orders';
 import { cashRegisterApi } from '../api/cash-register';
+import api from '../api/client';
 import { Product, Category } from '../types';
 import { formatCurrency } from '../utils/format';
-import { Search, Plus, Minus, Trash2, ShoppingCart, X, CreditCard, Banknote, Smartphone, Wallet, ScanBarcode, Package, Users } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingCart, X, CreditCard, Banknote, Smartphone, Wallet, ScanBarcode, Package, Users, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 import CashRegisterModal from '../components/cash-register/CashRegisterModal';
 
@@ -65,9 +66,14 @@ export default function PDV() {
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
+  // Custom sale state
+  const [allowCustomSale, setAllowCustomSale] = useState(false);
+  const [customPrice, setCustomPrice] = useState('');
+
   useEffect(() => {
     loadData();
     checkCashRegister();
+    loadSettings();
   }, []);
 
   useEffect(() => {
@@ -108,10 +114,20 @@ export default function PDV() {
     }
   };
 
+  const loadSettings = async () => {
+    try {
+      const { data } = await api.get('/settings/allow_sale_without_product');
+      setAllowCustomSale(data.data === 'true');
+    } catch {
+      setAllowCustomSale(false);
+    }
+  };
+
   const openSearch = () => {
     setSearchOpen(true);
     setSearchQuery('');
     setSearchResults([]);
+    setCustomPrice('');
     setTimeout(() => searchRef.current?.focus(), 50);
   };
 
@@ -176,6 +192,28 @@ export default function PDV() {
       return [...prev, { product, quantity: 1, splitId }];
     });
     toast.success(`${product.name} adicionado`);
+  };
+
+  const addCustomToCart = (name: string, price: number) => {
+    const customProduct: Product = {
+      id: `custom_${Date.now()}`,
+      category_id: '',
+      name,
+      slug: '',
+      description: null,
+      price,
+      promo_price: null,
+      cost_price: null,
+      image_url: null,
+      barcode: null,
+      stock: 999,
+      unit: 'un',
+      volume: null,
+      brand: null,
+      is_active: 1,
+      is_featured: 0,
+    };
+    addToCart(customProduct);
   };
 
   const updateQuantity = (productId: string, delta: number) => {
@@ -365,7 +403,13 @@ export default function PDV() {
 
     setLoading(true);
     try {
-      const items = cart.map(i => ({ product_id: i.product.id, quantity: i.quantity }));
+      const items = cart.map(i => {
+        if (i.product.id.startsWith('custom_')) {
+          const price = i.product.promo_price ?? i.product.price;
+          return { product_id: '', product_name: i.product.name, unit_price: price, quantity: i.quantity };
+        }
+        return { product_id: i.product.id, quantity: i.quantity };
+      });
 
       let paymentMethod: string | undefined;
       let paymentSplits: Array<{ label: string; product_ids: string[]; payment_method: string; total: number }> | undefined;
@@ -516,6 +560,52 @@ export default function PDV() {
                 <Package size={32} className="mx-auto mb-2 opacity-50" />
                 <p>Nenhum produto encontrado para "{searchQuery}"</p>
                 <p className="text-sm mt-1">Tente outro termo ou escaneie o código de barras</p>
+                {allowCustomSale && (
+                  <div className="mt-6 pt-6 border-t border-gray-800 text-left max-w-sm mx-auto">
+                    <p className="text-sm font-medium text-gray-300 mb-3 text-center">Adicionar item avulso</p>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Nome do item</label>
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={e => setSearchQuery(e.target.value)}
+                          className="input w-full text-sm"
+                          placeholder="Ex: Água, Salgado, etc"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Valor (R$)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={customPrice}
+                          onChange={e => setCustomPrice(e.target.value)}
+                          className="input w-full text-sm"
+                          placeholder="0,00"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          const price = parseFloat(customPrice) || 0;
+                          if (price <= 0) {
+                            toast.error('Informe um valor válido');
+                            return;
+                          }
+                          addCustomToCart(searchQuery.trim() || 'Item avulso', price);
+                          setSearchOpen(false);
+                          setSearchQuery('');
+                          setCustomPrice('');
+                        }}
+                        className="btn-primary w-full flex items-center justify-center gap-2 py-2 text-sm"
+                      >
+                        <DollarSign size={16} />
+                        Adicionar ao carrinho
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -34,7 +34,9 @@ const itemModifierSchema = z.object({
 const createOrderSchema = z.object({
   customer_id: z.string().min(1),
   items: z.array(z.object({
-    product_id: z.string().min(1),
+    product_id: z.string().optional(),
+    product_name: z.string().optional(),
+    unit_price: z.number().optional(),
     quantity: z.number().int().positive(),
     notes: z.string().optional(),
     variant_id: z.string().optional(),

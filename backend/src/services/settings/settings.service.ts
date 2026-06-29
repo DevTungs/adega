@@ -50,6 +50,10 @@ export class SettingsAgent {
     return this.getFromDb('pix_key') || '';
   }
 
+  allowSaleWithoutProduct(): boolean {
+    return this.getFromDb('allow_sale_without_product') === 'true';
+  }
+
   getPaymentMethods(): Array<{ id: string; label: string; icon: string; enabled: boolean; order: number }> {
     try {
       const raw = this.getFromDb('payment_methods');

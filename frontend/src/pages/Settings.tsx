@@ -23,6 +23,7 @@ interface Settings {
   pix_key: string;
   payment_methods: string;
   delivery_fee_ranges: string;
+  allow_sale_without_product: string;
 }
 
 interface PaymentMethod {
@@ -68,6 +69,7 @@ const defaultSettings: Settings = {
     { from: '00:00', to: '12:00', fee: 5.00 },
     { from: '12:00', to: '23:59', fee: 8.00 },
   ]),
+  allow_sale_without_product: 'false',
 };
 
 export default function Settings() {
@@ -284,6 +286,21 @@ export default function Settings() {
             ))}
           </div>
           <p className="text-xs text-gray-400 mt-2">Marque/desmarque os métodos que estarão disponíveis no WhatsApp</p>
+        </div>
+
+        {/* PDV Settings */}
+        <div className="card">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-2xl">🛒</span>
+            <h2 className="text-lg font-semibold">PDV</h2>
+          </div>
+          <div className="space-y-3">
+            <label className="flex items-center gap-3">
+              <input type="checkbox" checked={settings.allow_sale_without_product === 'true'} onChange={(e) => update('allow_sale_without_product', e.target.checked ? 'true' : 'false')} className="rounded" />
+              <span className="text-sm text-gray-300">Permitir venda sem produto</span>
+            </label>
+            <p className="text-xs text-gray-400 ml-7">Quando ativado, o PDV permite digitar o nome e valor do item manualmente, sem necessidade de produto cadastrado.</p>
+          </div>
         </div>
 
         {/* Printer Settings */}
