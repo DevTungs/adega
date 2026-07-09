@@ -23,6 +23,13 @@ loadElectronEnv();
 
 app.disableHardwareAcceleration();
 
+// Memory optimization: limit V8 heap and disable unnecessary features
+app.commandLine.appendSwitch('--js-flags', '--max-old-space-size=256 --optimize-for-size');
+app.commandLine.appendSwitch('--disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('--disable-background-timer-throttling');
+app.commandLine.appendSwitch('--disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('--disable-renderer-backgrounding');
+
 // ── Loading screen HTML ──────────────────────────────────────────────
 const LOADING_HTML = `<!DOCTYPE html>
 <html>

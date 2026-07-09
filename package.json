@@ -1,6 +1,6 @@
 {
   "name": "painel-delivery",
-  "version": "1.0.51",
+  "version": "1.0.52",
   "description": "Sistema de Delivery - Painel Administrativo",
   "main": "electron/main.js",
   "author": "Painel Delivery",
@@ -34,10 +34,12 @@
       "output": "release"
     },
     "files": [
-      "electron/**/*"
+      "electron/**/*.js",
+      "electron/**/*.ico"
     ],
-    "compression": "store",
+    "compression": "maximum",
     "asar": true,
+    "afterPack": "./scripts/filter-locales.js",
     "extraResources": [
       {
         "from": "frontend/dist",
@@ -81,7 +83,7 @@
       "signAndEditExecutable": false
     },
     "linux": {
-      "icon": "electron/icon.svg",
+      "icon": "electron/icon.ico",
       "target": [
         "AppImage"
       ],
