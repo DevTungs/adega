@@ -30,36 +30,51 @@ export default function OrderDetails({ order, orderType, onClose }: Props) {
   const itemsBySplit = useMemo(() => {
     if (!hasSplits) return null;
     const splitMap: Record<number, { split: PaymentSplit; items: typeof order.items }> = {};
-    const usedCounters: Record<string, number> = {};
 
     for (let si = 0; si < paymentSplits.length; si++) {
       splitMap[si] = { split: paymentSplits[si], items: [] };
     }
 
-    for (const item of order.items || []) {
-      const pid = item.product_id;
-      const key = usedCounters[pid] || 0;
-      usedCounters[pid] = key + 1;
+    const hasItemIndices = paymentSplits.some(s => s.item_indices && s.item_indices.length > 0);
 
-      // Find which split this item belongs to by matching product_id order
-      let assigned = false;
+    if (hasItemIndices) {
+      const allItems = order.items || [];
       for (let si = 0; si < paymentSplits.length; si++) {
         const split = paymentSplits[si];
-        const occurrencesBefore = paymentSplits
-          .slice(0, si)
-          .reduce((sum, s) => sum + s.product_ids.filter(id => id === pid).length, 0);
-        const countInThisSplit = split.product_ids.filter(id => id === pid).length;
-        const startIdx = occurrencesBefore;
-        const endIdx = startIdx + countInThisSplit;
-        if (key >= startIdx && key < endIdx) {
-          splitMap[si].items.push(item);
-          assigned = true;
-          break;
+        if (split.item_indices) {
+          for (const idx of split.item_indices) {
+            if (allItems[idx]) {
+              splitMap[si].items.push(allItems[idx]);
+            }
+          }
         }
       }
-      if (!assigned) {
-        // Fallback: put in first split
-        splitMap[0]?.items.push(item);
+    } else {
+      const usedCounters: Record<string, number> = {};
+
+      for (const item of order.items || []) {
+        const pid = item.product_id;
+        const key = usedCounters[pid] || 0;
+        usedCounters[pid] = key + 1;
+
+        let assigned = false;
+        for (let si = 0; si < paymentSplits.length; si++) {
+          const split = paymentSplits[si];
+          const occurrencesBefore = paymentSplits
+            .slice(0, si)
+            .reduce((sum, s) => sum + s.product_ids.filter(id => id === pid).length, 0);
+          const countInThisSplit = split.product_ids.filter(id => id === pid).length;
+          const startIdx = occurrencesBefore;
+          const endIdx = startIdx + countInThisSplit;
+          if (key >= startIdx && key < endIdx) {
+            splitMap[si].items.push(item);
+            assigned = true;
+            break;
+          }
+        }
+        if (!assigned) {
+          splitMap[0]?.items.push(item);
+        }
       }
     }
     return splitMap;

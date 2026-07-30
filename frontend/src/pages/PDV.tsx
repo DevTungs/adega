@@ -528,14 +528,17 @@ export default function PDV() {
       });
 
       let paymentMethod: string | undefined;
-      let paymentSplits: Array<{ label: string; product_ids: string[]; payment_method: string; total: number }> | undefined;
+      let paymentSplits: Array<{ label: string; product_ids: string[]; item_indices: number[]; payment_method: string; total: number }> | undefined;
 
       if (splitMode) {
         paymentSplits = splitGroups.map(g => {
-          const groupItems = cart.filter(i => i.splitId === g.id);
+          const groupEntries = cart
+            .map((item, index) => ({ item, index }))
+            .filter(({ item }) => item.splitId === g.id);
           return {
             label: g.label,
-            product_ids: groupItems.flatMap(i => Array(i.quantity).fill(i.product.id)),
+            product_ids: groupEntries.flatMap(({ item }) => Array(item.quantity).fill(item.product.id)),
+            item_indices: groupEntries.flatMap(({ item, index }) => Array(item.quantity).fill(index)),
             payment_method: g.paymentMethod,
             total: splitsTotal[g.id] || 0,
           };

@@ -14,7 +14,8 @@ import { logger } from '../../shared/middlewares/logger';
 
 const paymentSplitSchema = z.object({
   label: z.string().min(1),
-  product_ids: z.array(z.string().min(1)).min(1),
+  product_ids: z.array(z.string()).min(1),
+  item_indices: z.array(z.number()).optional(),
   payment_method: z.string().min(1),
   total: z.number().min(0),
 });

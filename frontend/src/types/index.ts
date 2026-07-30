@@ -4,6 +4,7 @@ export type PaymentMethod = 'cash' | 'credit_card' | 'debit_card' | 'pix' | 'vou
 export interface PaymentSplit {
   label: string;
   product_ids: string[];
+  item_indices?: number[];
   payment_method: PaymentMethod;
   total: number;
 }
