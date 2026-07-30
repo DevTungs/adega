@@ -19,6 +19,11 @@ interface CartItem {
   product: Product;
   quantity: number;
   splitId: string;
+  variant_id?: string;
+  variant_name?: string;
+  modifiers?: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }>;
+  display_name?: string;
+  unit_price: number;
 }
 
 interface PersonSplit {
@@ -65,6 +70,12 @@ export default function PDV() {
   const [searchLoading, setSearchLoading] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Product configuration modal state (variants + modifiers)
+  const [configProduct, setConfigProduct] = useState<Product | null>(null);
+  const [configVariant, setConfigVariant] = useState<string>('');
+  const [configModifiers, setConfigModifiers] = useState<Record<string, string[]>>({});
+  const [configHalves, setConfigHalves] = useState(false);
 
   // Custom sale state
   const [allowCustomSale, setAllowCustomSale] = useState(false);
@@ -177,21 +188,118 @@ export default function PDV() {
   };
 
   const addToCart = (product: Product) => {
+    const hasVariants = product.variants && product.variants.length > 0;
+    const requiredModifiers = (product.modifiers || []).filter(m => m.type === 'required' || m.min_select > 0);
+    const hasRequiredModifiers = requiredModifiers.length > 0;
+
+    if (hasVariants || hasRequiredModifiers) {
+      setConfigProduct(product);
+      setConfigVariant(product.variants?.[0]?.id || '');
+      const initialMods: Record<string, string[]> = {};
+      for (const mod of requiredModifiers) {
+        initialMods[mod.id] = [];
+      }
+      setConfigModifiers(initialMods);
+      setConfigHalves(false);
+      return;
+    }
+
+    const basePrice = product.promo_price ?? product.price;
     const avail = availableStock(product);
     if (avail <= 0) {
       toast(`${product.name} - sem estoque disponível!`, { icon: '⚠️' });
     }
     const splitId = '_single';
     setCart(prev => {
-      const existing = prev.find(i => i.product.id === product.id && i.splitId === splitId);
+      const existing = prev.find(i =>
+        i.product.id === product.id && i.splitId === splitId && !i.variant_id && (!i.modifiers || i.modifiers.length === 0)
+      );
       if (existing) {
         return prev.map(i =>
-          i.product.id === product.id && i.splitId === splitId ? { ...i, quantity: i.quantity + 1 } : i
+          i === existing ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
-      return [...prev, { product, quantity: 1, splitId }];
+      return [...prev, { product, quantity: 1, splitId, unit_price: basePrice }];
     });
     toast.success(`${product.name} adicionado`);
+  };
+
+  const getConfiguredPrice = (product: Product, variantId: string, modifiers: Record<string, string[]>): number => {
+    let price = product.price;
+    if (variantId) {
+      const variant = product.variants?.find(v => v.id === variantId);
+      if (variant) price = variant.promo_price ?? variant.price;
+    }
+    for (const mod of (product.modifiers || [])) {
+      const selected = modifiers[mod.id] || [];
+      for (const optId of selected) {
+        const opt = mod.options?.find(o => o.id === optId);
+        if (opt) price += opt.price_add;
+      }
+    }
+    return price;
+  };
+
+  const confirmConfigAddToCart = () => {
+    if (!configProduct) return;
+    const product = configProduct;
+
+    const requiredMods = (product.modifiers || []).filter(m => m.type === 'required' || m.min_select > 0);
+    for (const mod of requiredMods) {
+      const selected = configModifiers[mod.id] || [];
+      if (selected.length < mod.min_select) {
+        toast.error(`Selecione pelo menos ${mod.min_select} opção(ões) de "${mod.name}"`);
+        return;
+      }
+    }
+
+    const allModifiers: Array<{ modifier_id: string; option_id: string; option_name: string; price_add: number }> = [];
+    for (const mod of (product.modifiers || [])) {
+      const selected = configModifiers[mod.id] || [];
+      for (const optId of selected) {
+        const opt = mod.options?.find(o => o.id === optId);
+        if (opt) {
+          allModifiers.push({
+            modifier_id: mod.id,
+            option_id: opt.id,
+            option_name: opt.name,
+            price_add: opt.price_add,
+          });
+        }
+      }
+    }
+
+    const unitPrice = getConfiguredPrice(product, configVariant, configModifiers);
+    const variantObj = configVariant ? product.variants?.find(v => v.id === configVariant) : undefined;
+    const modNames = allModifiers.map(m => m.option_name).join(' + ');
+    const variantName = variantObj?.name || '';
+    const displayName = [product.name, variantName, modNames].filter(Boolean).join(' ');
+
+    const avail = availableStock(product);
+    if (avail <= 0) {
+      toast(`${product.name} - sem estoque disponível!`, { icon: '⚠️' });
+    }
+
+    const splitId = '_single';
+    setCart(prev => [
+      ...prev,
+      {
+        product,
+        quantity: 1,
+        splitId,
+        variant_id: configVariant || undefined,
+        variant_name: variantName || undefined,
+        modifiers: allModifiers.length > 0 ? allModifiers : undefined,
+        display_name: displayName !== product.name ? displayName : undefined,
+        unit_price: unitPrice,
+      },
+    ]);
+
+    setConfigProduct(null);
+    setConfigVariant('');
+    setConfigModifiers({});
+    setConfigHalves(false);
+    toast.success(`${displayName} adicionado`);
   };
 
   const addCustomToCart = (name: string, price: number) => {
@@ -216,16 +324,16 @@ export default function PDV() {
     addToCart(customProduct);
   };
 
-  const updateQuantity = (productId: string, delta: number) => {
-    setCart(prev => prev.map(i => {
-      if (i.product.id !== productId || i.splitId !== '_single') return i;
-      const newQty = i.quantity + delta;
-      return newQty <= 0 ? i : { ...i, quantity: newQty };
+  const updateQuantity = (cartIdx: number, delta: number) => {
+    setCart(prev => prev.map((item, idx) => {
+      if (idx !== cartIdx || item.splitId !== '_single') return item;
+      const newQty = item.quantity + delta;
+      return newQty <= 0 ? item : { ...item, quantity: newQty };
     }).filter(i => i.quantity > 0));
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart(prev => prev.filter(i => !(i.product.id === productId && i.splitId === '_single')));
+  const removeFromCart = (cartIdx: number) => {
+    setCart(prev => prev.filter((_, idx) => idx !== cartIdx));
   };
 
   const clearCart = () => {
@@ -236,8 +344,7 @@ export default function PDV() {
 
   const subtotal = useMemo(() =>
     cart.reduce((sum, i) => {
-      const price = i.product.promo_price ?? i.product.price;
-      return sum + price * i.quantity;
+      return sum + i.unit_price * i.quantity;
     }, 0),
     [cart]
   );
@@ -250,15 +357,19 @@ export default function PDV() {
     return base - inCart;
   }
 
-  // Merge same products by product.id in split mode display
+  // Merge same products by product.id + variant_id + modifiers key in split mode display
   const cartSummary = useMemo(() => {
-    const map = new Map<string, CartItem>();
-    for (const i of cart) {
-      const k = i.product.id;
+    const map = new Map<string, CartItem & { cartIndices: number[] }>();
+    for (let idx = 0; idx < cart.length; idx++) {
+      const i = cart[idx];
+      const modKey = (i.modifiers || []).map(m => m.option_id).sort().join(',');
+      const k = `${i.product.id}_${i.variant_id || ''}_${modKey}`;
       if (map.has(k)) {
-        map.get(k)!.quantity += i.quantity;
+        const existing = map.get(k)!;
+        existing.quantity += i.quantity;
+        existing.cartIndices.push(idx);
       } else {
-        map.set(k, { ...i });
+        map.set(k, { ...i, cartIndices: [idx] });
       }
     }
     return Array.from(map.values());
@@ -325,8 +436,7 @@ export default function PDV() {
     return Object.entries(person.quantities).reduce((sum, [pid, qty]) => {
       const item = cartSummary.find(i => i.product.id === pid);
       if (!item) return sum;
-      const price = item.product.promo_price ?? item.product.price;
-      return sum + price * qty;
+      return sum + item.unit_price * qty;
     }, 0);
   }
 
@@ -365,6 +475,11 @@ export default function PDV() {
             product: item.product,
             quantity: qty,
             splitId: groups[pi].id,
+            variant_id: item.variant_id,
+            variant_name: item.variant_name,
+            modifiers: item.modifiers,
+            display_name: item.display_name,
+            unit_price: item.unit_price,
           });
         }
       }
@@ -383,8 +498,7 @@ export default function PDV() {
       totals[g.id] = cart
         .filter(i => i.splitId === g.id)
         .reduce((sum, i) => {
-          const price = i.product.promo_price ?? i.product.price;
-          return sum + price * i.quantity;
+          return sum + i.unit_price * i.quantity;
         }, 0);
     }
     return totals;
@@ -405,10 +519,12 @@ export default function PDV() {
     try {
       const items = cart.map(i => {
         if (i.product.id.startsWith('custom_')) {
-          const price = i.product.promo_price ?? i.product.price;
-          return { product_id: '', product_name: i.product.name, unit_price: price, quantity: i.quantity };
+          return { product_id: '', product_name: i.product.name, unit_price: i.unit_price, quantity: i.quantity };
         }
-        return { product_id: i.product.id, quantity: i.quantity };
+        const item: any = { product_id: i.product.id, quantity: i.quantity };
+        if (i.variant_id) item.variant_id = i.variant_id;
+        if (i.modifiers && i.modifiers.length > 0) item.modifiers = i.modifiers;
+        return item;
       });
 
       let paymentMethod: string | undefined;
@@ -419,7 +535,7 @@ export default function PDV() {
           const groupItems = cart.filter(i => i.splitId === g.id);
           return {
             label: g.label,
-            product_ids: groupItems.map(i => i.product.id),
+            product_ids: groupItems.flatMap(i => Array(i.quantity).fill(i.product.id)),
             payment_method: g.paymentMethod,
             total: splitsTotal[g.id] || 0,
           };
@@ -667,9 +783,10 @@ export default function PDV() {
                 </thead>
                 <tbody className="divide-y divide-gray-800">
                   {cartSummary.map(item => {
-                    const price = (item.product.promo_price != null && item.product.promo_price > 0) ? item.product.promo_price : item.product.price;
+                    const price = item.unit_price;
+                    const displayName = item.display_name || item.product.name;
                     return (
-                      <tr key={item.product.id} className="hover:bg-gray-800/50">
+                      <tr key={`${item.product.id}_${item.variant_id}_${(item.modifiers || []).map(m => m.option_id).join(',')}`} className="hover:bg-gray-800/50">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {item.product.image_url ? (
@@ -680,7 +797,7 @@ export default function PDV() {
                               </div>
                             )}
                             <div>
-                              <p className="font-medium text-white">{item.product.name}</p>
+                              <p className="font-medium text-white">{displayName}</p>
                               {item.product.brand && <p className="text-xs text-gray-400">{item.product.brand}</p>}
                             </div>
                           </div>
@@ -691,14 +808,20 @@ export default function PDV() {
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-2">
                             <button
-                              onClick={() => updateQuantity(item.product.id, -1)}
+                              onClick={() => {
+                                const idx = item.cartIndices?.[0] ?? 0;
+                                updateQuantity(idx, -1);
+                              }}
                               className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-200 flex items-center justify-center transition-colors"
                             >
                               <Minus size={16} />
                             </button>
                             <span className="w-10 text-center font-bold text-lg">{item.quantity}</span>
                             <button
-                              onClick={() => updateQuantity(item.product.id, 1)}
+                              onClick={() => {
+                                const idx = item.cartIndices?.[0] ?? 0;
+                                updateQuantity(idx, 1);
+                              }}
                               className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-200 flex items-center justify-center transition-colors"
                             >
                               <Plus size={16} />
@@ -710,7 +833,10 @@ export default function PDV() {
                         </td>
                         <td className="px-2 py-3">
                           <button
-                            onClick={() => removeFromCart(item.product.id)}
+                            onClick={() => {
+                              const idx = item.cartIndices?.[0] ?? 0;
+                              removeFromCart(idx);
+                            }}
                             className="w-8 h-8 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center transition-colors"
                           >
                             <Trash2 size={16} />
@@ -731,19 +857,18 @@ export default function PDV() {
             {splitGroups.map(g => {
               const groupItems = cart.filter(i => i.splitId === g.id);
               const groupTotal = groupItems.reduce((sum, i) => {
-                const price = i.product.promo_price ?? i.product.price;
-                return sum + price * i.quantity;
+                return sum + i.unit_price * i.quantity;
               }, 0);
               return (
                 <div key={g.id} className="bg-gray-900 rounded-xl border border-primary-700 p-4 space-y-2">
                   <p className="font-bold text-white text-sm">{g.label}</p>
                   <div className="text-xs text-gray-400 space-y-1">
                     {groupItems.map((i, idx) => {
-                      const price = i.product.promo_price ?? i.product.price;
+                      const displayName = i.display_name || i.product.name;
                       return (
                         <div key={idx} className="flex justify-between">
-                          <span>{i.quantity}x {i.product.name}</span>
-                          <span>{formatCurrency(price * i.quantity)}</span>
+                          <span>{i.quantity}x {displayName}</span>
+                          <span>{formatCurrency(i.unit_price * i.quantity)}</span>
                         </div>
                       );
                     })}
@@ -921,10 +1046,11 @@ export default function PDV() {
                       {cartSummary.map(item => {
                         const qty = person.quantities[item.product.id] || 0;
                         const remaining = getRemainingQuantity(item.product.id) + qty;
-                        const price = item.product.promo_price ?? item.product.price;
+                        const price = item.unit_price;
+                        const displayName = item.display_name || item.product.name;
                         return (
-                          <div key={item.product.id} className="flex items-center gap-3">
-                            <span className="text-sm text-gray-300 flex-1 min-w-0 truncate">{item.product.name}</span>
+                          <div key={`${item.product.id}_${item.variant_id}`} className="flex items-center gap-3">
+                            <span className="text-sm text-gray-300 flex-1 min-w-0 truncate">{displayName}</span>
                             <span className="text-xs text-gray-500 w-16 text-right">disp: {remaining}</span>
                             <div className="flex items-center gap-1">
                               <button
@@ -971,6 +1097,121 @@ export default function PDV() {
                 </button>
                 <button onClick={confirmSplit} className="btn-primary px-6 py-2">
                   Confirmar Divisão
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Configuration Modal (Variants + Modifiers) */}
+      {configProduct && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="p-6 pb-4 border-b border-gray-800">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xl font-bold text-white">{configProduct.name}</h3>
+                <button onClick={() => setConfigProduct(null)} className="text-gray-400 hover:text-gray-200">
+                  <X size={20} />
+                </button>
+              </div>
+              <p className="text-sm text-gray-400">Configure o item antes de adicionar ao carrinho</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Variant Selection */}
+              {configProduct.variants && configProduct.variants.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-bold text-gray-300 mb-3">Tamanho</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {configProduct.variants.filter(v => v.is_active).map(variant => {
+                      const price = variant.promo_price ?? variant.price;
+                      return (
+                        <button
+                          key={variant.id}
+                          onClick={() => setConfigVariant(variant.id)}
+                          className={`p-3 rounded-xl border-2 text-left transition-all ${
+                            configVariant === variant.id
+                              ? 'border-primary-500 bg-primary-500/10'
+                              : 'border-gray-700 hover:border-gray-500'
+                          }`}
+                        >
+                          <p className="font-bold text-white text-sm">{variant.name}</p>
+                          <p className="text-primary-500 font-bold">{formatCurrency(price)}</p>
+                          {variant.stock !== null && (
+                            <p className="text-xs text-gray-500">Estoque: {variant.stock}</p>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Modifier Selection */}
+              {(configProduct.modifiers || []).map(mod => (
+                <div key={mod.id}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-gray-300">{mod.name}</h4>
+                    <span className="text-xs text-gray-500">
+                      {mod.min_select > 0 && `Mín: ${mod.min_select}`}
+                      {mod.max_select > 1 && ` | Máx: ${mod.max_select}`}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {(mod.options || []).filter(o => o.is_active).map(option => {
+                      const selected = (configModifiers[mod.id] || []).includes(option.id);
+                      return (
+                        <button
+                          key={option.id}
+                          onClick={() => {
+                            setConfigModifiers(prev => {
+                              const current = prev[mod.id] || [];
+                              if (mod.max_select <= 1) {
+                                return { ...prev, [mod.id]: [option.id] };
+                              }
+                              if (selected) {
+                                return { ...prev, [mod.id]: current.filter(id => id !== option.id) };
+                              }
+                              if (current.length >= mod.max_select) {
+                                toast.error(`Máximo de ${mod.max_select} opções`);
+                                return prev;
+                              }
+                              return { ...prev, [mod.id]: [...current, option.id] };
+                            });
+                          }}
+                          className={`w-full p-3 rounded-xl border-2 text-left transition-all flex items-center justify-between ${
+                            selected
+                              ? 'border-primary-500 bg-primary-500/10'
+                              : 'border-gray-700 hover:border-gray-500'
+                          }`}
+                        >
+                          <span className="text-sm text-white">{option.name}</span>
+                          {option.price_add > 0 && (
+                            <span className="text-xs text-primary-500 font-bold">+{formatCurrency(option.price_add)}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-6 pt-4 border-t border-gray-800">
+              {/* Price Preview */}
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-gray-400">Preço unitário:</span>
+                <span className="text-lg font-bold text-primary-600">
+                  {formatCurrency(getConfiguredPrice(configProduct, configVariant, configModifiers))}
+                </span>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setConfigProduct(null)} className="btn-secondary px-6 py-2 flex-1">
+                  Cancelar
+                </button>
+                <button onClick={confirmConfigAddToCart} className="btn-primary px-6 py-2 flex-1">
+                  Adicionar ao Carrinho
                 </button>
               </div>
             </div>

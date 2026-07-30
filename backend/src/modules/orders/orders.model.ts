@@ -236,7 +236,7 @@ export class OrdersModel {
         product_name: item.product_name,
         quantity: item.quantity,
         unit_price: item.unit_price,
-        total_price: (item.unit_price * item.quantity) + (item.modifiers || []).reduce((s, m) => s + m.price_add * item.quantity, 0),
+        total_price: item.unit_price * item.quantity,
         variant_id: item.variant_id || null,
         notes: item.notes || null,
         created_at: now,
