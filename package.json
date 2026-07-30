@@ -83,7 +83,7 @@
       "signAndEditExecutable": false
     },
     "linux": {
-      "icon": "electron/icon.ico",
+      "icon": "electron/icon.png",
       "target": [
         "AppImage"
       ],
